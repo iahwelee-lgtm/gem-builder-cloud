@@ -1,6 +1,7 @@
 import json
 import re
 import time
+from datetime import datetime
 
 import streamlit as st
 from supabase import create_client
@@ -8,7 +9,7 @@ from google import genai
 
 
 # =========================================================
-# 1. Page Settings
+# 1. Page
 # =========================================================
 
 st.set_page_config(
@@ -59,11 +60,30 @@ st.markdown(
         border-radius: 10px !important;
     }
 
+    .gem-card {
+        border: 1px solid rgba(128,128,128,0.25);
+        border-radius: 14px;
+        padding: 18px;
+        margin-bottom: 14px;
+    }
+
     .info-card {
         border: 1px solid rgba(128,128,128,0.20);
         border-radius: 14px;
         padding: 18px;
         margin-bottom: 15px;
+    }
+
+    .model-card {
+        border: 1px solid rgba(128,128,128,0.22);
+        border-radius: 12px;
+        padding: 12px 15px;
+        margin-bottom: 8px;
+    }
+
+    .small-text {
+        font-size: 0.85rem;
+        opacity: 0.75;
     }
 
     @media (max-width: 768px) {
@@ -92,9 +112,11 @@ st.markdown(
             font-size: 1rem;
         }
 
+        .gem-card,
         .info-card {
             padding: 14px;
         }
+
     }
 
     </style>
@@ -111,9 +133,7 @@ try:
     SUPABASE_URL = st.secrets["SUPABASE_URL"]
     SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
     GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
-
 except Exception as e:
-
     st.error("❌ 無法讀取 Streamlit Secrets。")
     st.code(str(e))
     st.stop()
@@ -124,21 +144,18 @@ except Exception as e:
 # =========================================================
 
 try:
-
     supabase = create_client(
         SUPABASE_URL,
         SUPABASE_KEY
     )
-
 except Exception as e:
-
     st.error("❌ Supabase 連線失敗")
     st.code(str(e))
     st.stop()
 
 
 # =========================================================
-# 5. Supabase Tables
+# 5. Table names
 # =========================================================
 
 GEM_TABLE = "gems"
@@ -149,7 +166,7 @@ CLOUD_TEST_TABLE = "cloud_test"
 
 
 # =========================================================
-# 6. Session State
+# 6. Session state
 # =========================================================
 
 defaults = {
@@ -167,28 +184,28 @@ defaults = {
 }
 
 for key, value in defaults.items():
-
     if key not in st.session_state:
         st.session_state[key] = value
 
 
 # =========================================================
-# 7. Gemini Client
+# 7. Gemini client
 # =========================================================
 
 def get_gemini_client():
-
     return genai.Client(
         api_key=GEMINI_API_KEY
     )
 
 
 # =========================================================
-# 8. Model Name
+# 8. Gemini model filtering
 # =========================================================
 
-def clean_model_name(name):
-
+def model_name_clean(name):
+    """
+    將 models/gemini-xxx 轉成 gemini-xxx
+    """
     if not name:
         return ""
 
@@ -200,11 +217,10 @@ def clean_model_name(name):
     return name
 
 
-# =========================================================
-# 9. Exclude Special Models
-# =========================================================
-
 def is_special_model(model_name):
+    """
+    排除不適合 GEM Builder 一般文字任務的模型。
+    """
 
     name = model_name.lower()
 
@@ -223,29 +239,21 @@ def is_special_model(model_name):
     ]
 
     for keyword in excluded_keywords:
-
         if keyword in name:
             return True
 
     return False
 
 
-# =========================================================
-# 10. Check Generate Content
-# =========================================================
-
 def model_supports_generate_content(model):
+    """
+    嘗試確認模型是否支援 generateContent。
+    """
 
     try:
-
-        actions = getattr(
-            model,
-            "supported_actions",
-            None
-        )
+        actions = getattr(model, "supported_actions", None)
 
         if actions:
-
             actions_text = " ".join(
                 str(x).lower()
                 for x in actions
@@ -253,10 +261,8 @@ def model_supports_generate_content(model):
 
             if (
                 "generatecontent" not in actions_text
-                and
-                "generate_content" not in actions_text
+                and "generate_content" not in actions_text
             ):
-
                 return False
 
     except Exception:
@@ -265,260 +271,174 @@ def model_supports_generate_content(model):
     return True
 
 
-# =========================================================
-# 11. Model Family
-# =========================================================
-
 def model_family(model_name):
+    """
+    將模型分類成：
+
+    1 = Flash-Lite
+    2 = Flash
+    3 = Pro
+    99 = 其他
+    """
 
     name = model_name.lower()
 
-    # Gemini 3.6 Flash
-    if (
-        "3.6-flash" in name
-        or
-        "3-6-flash" in name
-    ):
-        return 2
-
-    # Flash-Lite
-    if (
-        "flash-lite" in name
-        or
-        "flash_lite" in name
-    ):
+    if "flash-lite" in name or "flash_lite" in name:
         return 1
 
-    # 一般 Flash
     if "flash" in name:
-        return 3
+        return 2
 
-    # Pro
     if "pro" in name:
-        return 4
+        return 3
 
     return 99
 
 
-# =========================================================
-# 12. Version Number
-# =========================================================
+def version_numbers(model_name):
+    """
+    取得模型名稱裡的數字版本。
 
-def version_value(model_name):
+    例如：
 
-    numbers = re.findall(
+    gemini-2.5-flash
+    → [2, 5]
+
+    gemini-3-pro
+    → [3]
+    """
+
+    nums = re.findall(
         r"\d+(?:\.\d+)?",
         model_name
     )
 
-    values = []
+    result = []
 
-    for number in numbers:
-
+    for n in nums:
         try:
-            values.append(
-                float(number)
-            )
-
+            if "." in n:
+                result.append(float(n))
+            else:
+                result.append(float(n))
         except Exception:
             pass
 
-    if not values:
-        return 0
+    return result
 
-    if len(values) >= 2:
-
-        return (
-            values[0] * 100
-            +
-            values[1]
-        )
-
-    return values[0] * 100
-
-
-# =========================================================
-# 13. Model Sort
-# =========================================================
 
 def model_sort_key(model_name):
+    """
+    模型排序：
 
-    family = model_family(
-        model_name
-    )
+    Flash-Lite
+    Flash
+    Pro
 
-    version = version_value(
-        model_name
-    )
+    同類型內：
+    新版本優先
+    """
+
+    family = model_family(model_name)
+
+    versions = version_numbers(model_name)
+
+    version_value = 0
+
+    if versions:
+        if len(versions) >= 2:
+            version_value = versions[0] * 100 + versions[1]
+        else:
+            version_value = versions[0] * 100
 
     return (
         family,
-        -version,
+        -version_value,
         model_name
     )
 
 
-# =========================================================
-# 14. Main Model Selection
-# =========================================================
+def get_primary_gemini_models(all_models):
+    """
+    從 Google 回傳的大量 Gemini 模型中，
+    只挑出 GEM Builder 的主要模型。
 
-def get_primary_gemini_models(
-    all_models
-):
+    最終最多：
 
-    candidates = []
+    1 個 Flash-Lite
+    1 個 Flash
+    1 個 Pro
+
+    如果其中某一類不存在，就不顯示。
+    """
+
+    clean_models = []
 
     for model in all_models:
 
-        name = clean_model_name(
-            getattr(
-                model,
-                "name",
-                ""
-            )
+        name = model_name_clean(
+            getattr(model, "name", "")
         )
 
         if not name:
             continue
 
-        lower_name = name.lower()
-
-        if not lower_name.startswith(
-            "gemini"
-        ):
+        if not name.lower().startswith("gemini"):
             continue
 
         if is_special_model(name):
             continue
 
-        if not model_supports_generate_content(
-            model
-        ):
+        if not model_supports_generate_content(model):
             continue
 
-        candidates.append(name)
+        clean_models.append(name)
 
-    candidates = list(
-        dict.fromkeys(candidates)
-    )
+    # 去除重複
+    clean_models = list(dict.fromkeys(clean_models))
 
-    # -----------------------------------------------------
-    # 3.6 Flash
-    # -----------------------------------------------------
+    flash_lite = []
+    flash = []
+    pro = []
 
-    gemini_36_flash = [
-        model
-        for model in candidates
-        if (
-            "3.6-flash" in model.lower()
-            or
-            "3-6-flash" in model.lower()
-        )
-    ]
+    for name in clean_models:
 
-    # -----------------------------------------------------
-    # Flash-Lite
-    # -----------------------------------------------------
+        family = model_family(name)
 
-    flash_lite = [
-        model
-        for model in candidates
-        if (
-            "flash-lite" in model.lower()
-            or
-            "flash_lite" in model.lower()
-        )
-    ]
+        if family == 1:
+            flash_lite.append(name)
 
-    # -----------------------------------------------------
-    # 一般 Flash
-    # -----------------------------------------------------
+        elif family == 2:
+            flash.append(name)
 
-    flash = [
-        model
-        for model in candidates
-        if (
-            "flash" in model.lower()
-            and
-            "flash-lite" not in model.lower()
-            and
-            "flash_lite" not in model.lower()
-            and
-            model not in gemini_36_flash
-        )
-    ]
+        elif family == 3:
+            pro.append(name)
 
-    # -----------------------------------------------------
-    # Pro
-    # -----------------------------------------------------
-
-    pro = [
-        model
-        for model in candidates
-        if "pro" in model.lower()
-    ]
-
-    gemini_36_flash.sort(
-        key=model_sort_key
-    )
-
-    flash_lite.sort(
-        key=model_sort_key
-    )
-
-    flash.sort(
-        key=model_sort_key
-    )
-
-    pro.sort(
-        key=model_sort_key
-    )
+    flash_lite.sort(key=model_sort_key)
+    flash.sort(key=model_sort_key)
+    pro.sort(key=model_sort_key)
 
     selected = []
 
-    # Flash-Lite
     if flash_lite:
-        selected.append(
-            flash_lite[0]
-        )
+        selected.append(flash_lite[0])
 
-    # Gemini 3.6 Flash
-    if gemini_36_flash:
-        selected.append(
-            gemini_36_flash[0]
-        )
-
-    # 一般 Flash
     if flash:
-        selected.append(
-            flash[0]
-        )
+        selected.append(flash[0])
 
-    # Pro
     if pro:
-        selected.append(
-            pro[0]
-        )
+        selected.append(pro[0])
 
     return selected
 
 
-# =========================================================
-# 15. Load Gemini Models
-# =========================================================
-
-def load_gemini_models(
-    force=False
-):
+def load_gemini_models(force=False):
 
     if (
         st.session_state.available_models
         and not force
     ):
-
-        return (
-            st.session_state.available_models
-        )
+        return st.session_state.available_models
 
     try:
 
@@ -528,10 +448,8 @@ def load_gemini_models(
             client.models.list()
         )
 
-        primary_models = (
-            get_primary_gemini_models(
-                raw_models
-            )
+        primary_models = get_primary_gemini_models(
+            raw_models
         )
 
         st.session_state.available_models = (
@@ -542,123 +460,71 @@ def load_gemini_models(
 
         # -------------------------------------------------
         # 預設模型
-        #
-        # 優先：
-        # Gemini 3.6 Flash
-        # → Flash
-        # → Flash-Lite
-        # → Pro
+        # 優先順序：
+        # Flash → Flash-Lite → Pro
         # -------------------------------------------------
 
         preferred = None
 
-        # 1. Gemini 3.6 Flash
         for model in primary_models:
-
-            lower_name = model.lower()
-
-            if (
-                "3.6-flash" in lower_name
-                or
-                "3-6-flash" in lower_name
-            ):
-
+            if model_family(model) == 2:
                 preferred = model
                 break
 
-        # 2. 一般 Flash
         if not preferred:
-
             for model in primary_models:
-
-                if (
-                    model_family(model) == 3
-                ):
-
+                if model_family(model) == 1:
                     preferred = model
                     break
 
-        # 3. Flash-Lite
-        if not preferred:
-
-            for model in primary_models:
-
-                if (
-                    model_family(model) == 1
-                ):
-
-                    preferred = model
-                    break
-
-        # 4. Pro
         if not preferred and primary_models:
-
-            preferred = primary_models[-1]
+            preferred = primary_models[0]
 
         if (
             st.session_state.selected_model
             not in primary_models
         ):
-
-            st.session_state.selected_model = (
-                preferred
-            )
+            st.session_state.selected_model = preferred
 
         return primary_models
 
     except Exception as e:
 
         st.session_state.available_models = []
-
         st.session_state.model_error = str(e)
 
         return []
 
 
 # =========================================================
-# 16. Model Candidates / Fallback
+# 9. Gemini model candidates / fallback
 # =========================================================
 
 def get_model_candidates():
 
-    models = (
-        st.session_state.available_models
-    )
+    models = st.session_state.available_models
 
-    selected = (
-        st.session_state.selected_model
-    )
+    selected = st.session_state.selected_model
 
     candidates = []
 
     if selected and selected in models:
-
-        candidates.append(
-            selected
-        )
+        candidates.append(selected)
 
     for model in models:
-
         if model not in candidates:
-
-            candidates.append(
-                model
-            )
+            candidates.append(model)
 
     return candidates
 
 
 # =========================================================
-# 17. Retryable Error
+# 10. Gemini API
 # =========================================================
 
-def is_retryable_error(
-    error_text
-):
+def is_retryable_error(error_text):
 
-    text = str(
-        error_text
-    ).upper()
+    text = str(error_text).upper()
 
     retry_words = [
         "503",
@@ -678,34 +544,21 @@ def is_retryable_error(
     )
 
 
-# =========================================================
-# 18. Ask Gemini
-# =========================================================
-
 def ask_gemini(
     prompt,
     max_retry=2
 ):
 
-    candidates = (
-        get_model_candidates()
-    )
+    candidates = get_model_candidates()
 
     if not candidates:
-
-        load_gemini_models(
-            force=True
-        )
-
-        candidates = (
-            get_model_candidates()
-        )
+        load_gemini_models(force=True)
+        candidates = get_model_candidates()
 
     if not candidates:
-
         return (
             "❌ 目前沒有可使用的 Gemini 模型。\n\n"
-            "請到側邊欄重新偵測 Gemini 模型。"
+            "請到側邊欄重新整理 Gemini 模型。"
         )
 
     errors = []
@@ -720,11 +573,9 @@ def ask_gemini(
 
                 client = get_gemini_client()
 
-                response = (
-                    client.models.generate_content(
-                        model=model,
-                        contents=prompt
-                    )
+                response = client.models.generate_content(
+                    model=model,
+                    contents=prompt
                 )
 
                 text = getattr(
@@ -735,9 +586,7 @@ def ask_gemini(
 
                 if text:
 
-                    st.session_state.selected_model = (
-                        model
-                    )
+                    st.session_state.selected_model = model
 
                     return text
 
@@ -753,29 +602,26 @@ def ask_gemini(
                     f"{model}: {error_text}"
                 )
 
-                if not is_retryable_error(
-                    error_text
+                if (
+                    not is_retryable_error(
+                        error_text
+                    )
                 ):
-
                     break
 
                 if attempt < max_retry:
-
                     time.sleep(
-                        1.5 * (
-                            attempt + 1
-                        )
+                        1.5 * (attempt + 1)
                     )
 
     return (
         "❌ Gemini 呼叫失敗\n\n"
-        +
-        "\n\n".join(errors)
+        + "\n\n".join(errors)
     )
 
 
 # =========================================================
-# 19. GEM CRUD
+# 11. GEM CRUD
 # =========================================================
 
 def get_gems():
@@ -801,9 +647,7 @@ def get_gems():
         return []
 
 
-def get_gem(
-    gem_id
-):
+def get_gem(gem_id):
 
     if not gem_id:
         return None
@@ -820,7 +664,6 @@ def get_gem(
         )
 
         if response.data:
-
             return response.data[0]
 
     except Exception as e:
@@ -902,9 +745,7 @@ def update_gem(
         return None
 
 
-def delete_gem(
-    gem_id
-):
+def delete_gem(gem_id):
 
     try:
 
@@ -928,12 +769,10 @@ def delete_gem(
 
 
 # =========================================================
-# 20. Knowledge
+# 12. Knowledge
 # =========================================================
 
-def get_knowledge(
-    gem_id
-):
+def get_knowledge(gem_id):
 
     if not gem_id:
         return []
@@ -1046,7 +885,7 @@ def delete_knowledge(
 
 
 # =========================================================
-# 21. Chat Sessions
+# 13. Chat sessions
 # =========================================================
 
 def get_chat_sessions():
@@ -1119,7 +958,6 @@ def create_chat_session(
         )
 
         if response.data:
-
             return response.data[0]
 
     except Exception as e:
@@ -1165,7 +1003,7 @@ def delete_chat_session(
 
 
 # =========================================================
-# 22. Chat Messages
+# 14. Chat messages
 # =========================================================
 
 def get_chat_messages(
@@ -1228,12 +1066,10 @@ def create_chat_message(
 
 
 # =========================================================
-# 23. Export
+# 15. Export
 # =========================================================
 
-def gem_to_txt(
-    gem
-):
+def gem_to_txt(gem):
 
     if not gem:
         return ""
@@ -1255,56 +1091,36 @@ def gem_to_txt(
     )
 
     text.append(
-        gem.get(
-            "description",
-            ""
-        )
+        gem.get("description", "")
     )
 
     text.append("")
 
-    text.append(
-        "## Role"
-    )
+    text.append("## Role")
 
     text.append(
-        gem.get(
-            "role",
-            ""
-        )
+        gem.get("role", "")
     )
 
     text.append("")
 
-    text.append(
-        "## Workflow"
-    )
+    text.append("## Workflow")
 
     text.append(
-        gem.get(
-            "workflow",
-            ""
-        )
+        gem.get("workflow", "")
     )
 
     text.append("")
 
-    text.append(
-        "## Greeting"
-    )
+    text.append("## Greeting")
 
     text.append(
-        gem.get(
-            "greeting",
-            ""
-        )
+        gem.get("greeting", "")
     )
 
     text.append("")
 
-    text.append(
-        "## Knowledge"
-    )
+    text.append("## Knowledge")
 
     for item in knowledge:
 
@@ -1313,10 +1129,7 @@ def gem_to_txt(
         )
 
         text.append(
-            item.get(
-                "content",
-                ""
-            )
+            item.get("content", "")
         )
 
         text.append("")
@@ -1324,9 +1137,7 @@ def gem_to_txt(
     return "\n".join(text)
 
 
-def gem_to_json(
-    gem
-):
+def gem_to_json(gem):
 
     if not gem:
         return {}
@@ -1349,7 +1160,6 @@ def gem_backup_json():
     backup = []
 
     for gem in gems:
-
         backup.append(
             gem_to_json(gem)
         )
@@ -1363,7 +1173,7 @@ def gem_backup_json():
 
 
 # =========================================================
-# 24. Build GEM Prompt
+# 16. Prompt builder
 # =========================================================
 
 def build_gem_prompt(
@@ -1418,7 +1228,7 @@ Knowledge：
 
 
 # =========================================================
-# 25. Dashboard
+# 17. Dashboard stats
 # =========================================================
 
 def get_dashboard_stats():
@@ -1434,18 +1244,17 @@ def get_dashboard_stats():
 
 
 # =========================================================
-# 26. Extract JSON
+# 18. JSON extraction
 # =========================================================
 
-def extract_json_from_text(
-    text
-):
+def extract_json_from_text(text):
 
     if not text:
         return None
 
     text = text.strip()
 
+    # 去除 markdown code fence
     text = re.sub(
         r"^```json\s*",
         "",
@@ -1467,21 +1276,16 @@ def extract_json_from_text(
 
     try:
 
-        return json.loads(
-            text
-        )
+        return json.loads(text)
 
     except Exception:
         pass
 
+    # 找第一個 { 到最後一個 }
     start = text.find("{")
     end = text.rfind("}")
 
-    if (
-        start != -1
-        and
-        end != -1
-    ):
+    if start != -1 and end != -1:
 
         try:
 
@@ -1496,18 +1300,14 @@ def extract_json_from_text(
 
 
 # =========================================================
-# 27. Normalize Optimization
+# 19. Normalize optimization result
 # =========================================================
 
 def normalize_optimization_result(
     result
 ):
 
-    if not isinstance(
-        result,
-        dict
-    ):
-
+    if not isinstance(result, dict):
         return None
 
     fields = [
@@ -1528,11 +1328,7 @@ def normalize_optimization_result(
             ""
         )
 
-        if isinstance(
-            value,
-            list
-        ):
-
+        if isinstance(value, list):
             value = "\n".join(
                 str(x)
                 for x in value
@@ -1541,20 +1337,16 @@ def normalize_optimization_result(
         if value is None:
             value = ""
 
-        normalized[field] = str(
-            value
-        )
+        normalized[field] = str(value)
 
     return normalized
 
 
 # =========================================================
-# 28. Optimize GEM
+# 20. AI optimization
 # =========================================================
 
-def optimize_gem(
-    gem
-):
+def optimize_gem(gem):
 
     if not gem:
         return None
@@ -1609,7 +1401,7 @@ Knowledge：
 
 只輸出合法 JSON。
 
-JSON 格式：
+JSON 格式必須完全符合：
 
 {{
   "problem_analysis": "...",
@@ -1652,7 +1444,7 @@ JSON 格式：
 
 
 # =========================================================
-# 29. Apply Optimization
+# 21. Apply optimization
 # =========================================================
 
 def apply_optimization(
@@ -1660,12 +1452,7 @@ def apply_optimization(
     optimization
 ):
 
-    if (
-        not gem
-        or
-        not optimization
-    ):
-
+    if not gem or not optimization:
         return False
 
     try:
@@ -1676,24 +1463,15 @@ def apply_optimization(
             .update({
                 "role": optimization.get(
                     "optimized_role",
-                    gem.get(
-                        "role",
-                        ""
-                    )
+                    gem.get("role", "")
                 ),
                 "workflow": optimization.get(
                     "optimized_workflow",
-                    gem.get(
-                        "workflow",
-                        ""
-                    )
+                    gem.get("workflow", "")
                 ),
                 "greeting": optimization.get(
                     "optimized_greeting",
-                    gem.get(
-                        "greeting",
-                        ""
-                    )
+                    gem.get("greeting", "")
                 ),
             })
             .eq(
@@ -1703,9 +1481,7 @@ def apply_optimization(
             .execute()
         )
 
-        return bool(
-            response.data
-        )
+        return bool(response.data)
 
     except Exception as e:
 
@@ -1717,56 +1493,7 @@ def apply_optimization(
 
 
 # =========================================================
-# 30. Model Display Name
-# =========================================================
-
-def display_model_name(
-    model
-):
-
-    name = model.lower()
-
-    # Gemini 3.6 Flash
-    if (
-        "3.6-flash" in name
-        or
-        "3-6-flash" in name
-    ):
-
-        return (
-            f"⭐ Gemini 3.6 Flash  ·  {model}"
-        )
-
-    # Flash-Lite
-    if (
-        "flash-lite" in name
-        or
-        "flash_lite" in name
-    ):
-
-        return (
-            f"⚡ Flash-Lite  ·  {model}"
-        )
-
-    # 一般 Flash
-    if "flash" in name:
-
-        return (
-            f"🚀 Flash  ·  {model}"
-        )
-
-    # Pro
-    if "pro" in name:
-
-        return (
-            f"🧠 Pro  ·  {model}"
-        )
-
-    return model
-
-
-# =========================================================
-# 31. Sidebar Model Management
+# 22. Sidebar model management
 # =========================================================
 
 def show_model_management():
@@ -1804,65 +1531,50 @@ def show_model_management():
 
         return
 
-    current = (
-        st.session_state.selected_model
-    )
+    # -----------------------------------------------------
+    # 模型顯示名稱
+    # -----------------------------------------------------
 
-    if current not in models:
+    def display_model_name(model):
 
-        current = models[0]
+        name = model.lower()
+
+        if "flash-lite" in name:
+            return f"⚡ Flash-Lite  ·  {model}"
+
+        if "flash" in name:
+            return f"🚀 Flash  ·  {model}"
+
+        if "pro" in name:
+            return f"🧠 Pro  ·  {model}"
+
+        return model
+
+    options = models
+
+    current = st.session_state.selected_model
+
+    if current not in options:
+        current = options[0]
 
     selected = st.sidebar.selectbox(
         "主要模型",
-        options=models,
-        index=models.index(
-            current
-        ),
+        options=options,
+        index=options.index(current),
         format_func=display_model_name,
         key="model_selector",
     )
 
-    if (
-        selected
-        !=
-        st.session_state.selected_model
-    ):
+    if selected != st.session_state.selected_model:
 
-        st.session_state.selected_model = (
-            selected
-        )
+        st.session_state.selected_model = selected
 
     st.sidebar.caption(
         f"目前使用：{selected}"
     )
 
-    # -----------------------------------------------------
-    # 3.6 Flash 狀態
-    # -----------------------------------------------------
-
-    has_36 = any(
-        (
-            "3.6-flash" in model.lower()
-            or
-            "3-6-flash" in model.lower()
-        )
-        for model in models
-    )
-
-    if has_36:
-
-        st.sidebar.success(
-            "⭐ Gemini 3.6 Flash 可用"
-        )
-
-    else:
-
-        st.sidebar.caption(
-            "ℹ️ Gemini 3.6 Flash 目前未由 API 回傳"
-        )
-
     st.sidebar.caption(
-        "只顯示主要 Gemini 模型"
+        "已自動篩選主要 Gemini 模型"
     )
 
     if st.sidebar.button(
@@ -1878,7 +1590,7 @@ def show_model_management():
 
 
 # =========================================================
-# 32. Header
+# 23. Header
 # =========================================================
 
 def show_header():
@@ -1894,51 +1606,33 @@ def show_header():
         )
 
         st.caption(
-            "Day 32-B｜Gemini 3.6 Flash 主要模型版"
+            "Day 32-A｜主要 Gemini 模型管理版"
         )
 
     with col2:
 
-        model = (
-            st.session_state.selected_model
-        )
-
-        if model:
-
-            if (
-                "3.6-flash"
-                in model.lower()
-                or
-                "3-6-flash"
-                in model.lower()
-            ):
-
-                label = "3.6 Flash"
-
-            elif "flash-lite" in model.lower():
-
-                label = "Flash-Lite"
-
-            elif "flash" in model.lower():
-
-                label = "Flash"
-
-            elif "pro" in model.lower():
-
-                label = "Pro"
-
-            else:
-
-                label = "Gemini"
+        if st.session_state.selected_model:
 
             st.metric(
                 "AI 模型",
-                label
+                model_family(
+                    st.session_state.selected_model
+                ) == 1
+                and "Flash-Lite"
+                or model_family(
+                    st.session_state.selected_model
+                ) == 2
+                and "Flash"
+                or model_family(
+                    st.session_state.selected_model
+                ) == 3
+                and "Pro"
+                or "Gemini"
             )
 
 
 # =========================================================
-# 33. Home
+# 24. Home
 # =========================================================
 
 def show_home():
@@ -1950,21 +1644,18 @@ def show_home():
     col1, col2, col3 = st.columns(3)
 
     with col1:
-
         st.metric(
             "GEM 數量",
             stats["gems"]
         )
 
     with col2:
-
         st.metric(
             "對話數",
             stats["sessions"]
         )
 
     with col3:
-
         st.metric(
             "主要模型",
             len(
@@ -1983,8 +1674,8 @@ def show_home():
     )
 
     st.info(
-        "目前只顯示主要 Gemini 模型，"
-        "並優先支援 Gemini 3.6 Flash。"
+        "目前版本已限制模型選單只顯示主要 "
+        "Flash-Lite、Flash、Pro 模型。"
     )
 
     gems = get_gems()
@@ -1999,10 +1690,7 @@ def show_home():
             "＋ 建立第一個 GEM"
         ):
 
-            st.session_state.page = (
-                "建立 GEM"
-            )
-
+            st.session_state.page = "建立 GEM"
             st.rerun()
 
         return
@@ -2045,7 +1733,7 @@ def show_home():
 
 
 # =========================================================
-# 34. Create GEM
+# 25. Create GEM
 # =========================================================
 
 def show_create_gem():
@@ -2134,12 +1822,11 @@ def show_create_gem():
         ):
 
             st.session_state.page = "首頁"
-
             st.rerun()
 
 
 # =========================================================
-# 35. Workspace
+# 26. Workspace
 # =========================================================
 
 def show_workspace():
@@ -2155,9 +1842,7 @@ def show_workspace():
         value=st.session_state.workspace_search
     )
 
-    st.session_state.workspace_search = (
-        search
-    )
+    st.session_state.workspace_search = search
 
     gems = get_gems()
 
@@ -2168,27 +1853,12 @@ def show_workspace():
         gems = [
             gem
             for gem in gems
-            if (
-                keyword
-                in
-                str(
-                    gem.get(
-                        "name",
-                        ""
-                    )
-                ).lower()
-            )
-            or
-            (
-                keyword
-                in
-                str(
-                    gem.get(
-                        "description",
-                        ""
-                    )
-                ).lower()
-            )
+            if keyword in str(
+                gem.get("name", "")
+            ).lower()
+            or keyword in str(
+                gem.get("description", "")
+            ).lower()
         ]
 
     if not gems:
@@ -2277,10 +1947,7 @@ def show_workspace():
                     ):
 
                         st.session_state.delete_confirm = False
-
-                        st.session_state.selected_gem_id = (
-                            None
-                        )
+                        st.session_state.selected_gem_id = None
 
                         st.success(
                             "GEM 已刪除。"
@@ -2296,12 +1963,11 @@ def show_workspace():
                 ):
 
                     st.session_state.delete_confirm = False
-
                     st.rerun()
 
 
 # =========================================================
-# 36. GEM Detail
+# 27. GEM detail
 # =========================================================
 
 def show_gem_detail():
@@ -2339,7 +2005,7 @@ def show_gem_detail():
     ])
 
     # =====================================================
-    # Content
+    # Tab 1 Content
     # =====================================================
 
     with tabs[0]:
@@ -2411,7 +2077,7 @@ def show_gem_detail():
         )
 
     # =====================================================
-    # Edit
+    # Tab 2 Edit
     # =====================================================
 
     with tabs[1]:
@@ -2489,7 +2155,7 @@ def show_gem_detail():
                 st.rerun()
 
     # =====================================================
-    # Knowledge
+    # Tab 3 Knowledge
     # =====================================================
 
     with tabs[2]:
@@ -2503,7 +2169,8 @@ def show_gem_detail():
         )
 
         with st.expander(
-            "＋ 新增 Knowledge"
+            "＋ 新增 Knowledge",
+            expanded=False
         ):
 
             new_title = st.text_input(
@@ -2616,7 +2283,7 @@ def show_gem_detail():
                             st.rerun()
 
     # =====================================================
-    # AI Optimization
+    # Tab 4 AI Optimization
     # =====================================================
 
     with tabs[3]:
@@ -2626,7 +2293,7 @@ def show_gem_detail():
         )
 
     # =====================================================
-    # Test
+    # Tab 5 Test
     # =====================================================
 
     with tabs[4]:
@@ -2668,9 +2335,7 @@ def show_gem_detail():
                         prompt
                     )
 
-                st.session_state.gemini_result = (
-                    result
-                )
+                st.session_state.gemini_result = result
 
         if st.session_state.gemini_result:
 
@@ -2685,7 +2350,7 @@ def show_gem_detail():
             )
 
     # =====================================================
-    # Chat
+    # Tab 6 Chat
     # =====================================================
 
     with tabs[5]:
@@ -2696,7 +2361,7 @@ def show_gem_detail():
 
 
 # =========================================================
-# 37. AI Optimization UI
+# 28. AI Optimization UI
 # =========================================================
 
 def show_gem_ai_optimization(
@@ -2757,7 +2422,6 @@ def show_gem_ai_optimization(
     )
 
     if not optimization:
-
         return
 
     st.markdown("---")
@@ -2771,6 +2435,10 @@ def show_gem_ai_optimization(
         "尚未修改 Supabase。"
     )
 
+    # -----------------------------------------------------
+    # 問題分析
+    # -----------------------------------------------------
+
     st.subheader(
         "🔎 問題分析"
     )
@@ -2781,6 +2449,10 @@ def show_gem_ai_optimization(
             ""
         )
     )
+
+    # -----------------------------------------------------
+    # Role
+    # -----------------------------------------------------
 
     st.subheader(
         "🎯 優化後 Role"
@@ -2797,6 +2469,10 @@ def show_gem_ai_optimization(
         key=f"optimized_role_preview_{gem.get('id')}"
     )
 
+    # -----------------------------------------------------
+    # Workflow
+    # -----------------------------------------------------
+
     st.subheader(
         "🔄 優化後 Workflow"
     )
@@ -2811,6 +2487,10 @@ def show_gem_ai_optimization(
         disabled=True,
         key=f"optimized_workflow_preview_{gem.get('id')}"
     )
+
+    # -----------------------------------------------------
+    # Greeting
+    # -----------------------------------------------------
 
     st.subheader(
         "👋 優化後 Greeting"
@@ -2827,6 +2507,10 @@ def show_gem_ai_optimization(
         key=f"optimized_greeting_preview_{gem.get('id')}"
     )
 
+    # -----------------------------------------------------
+    # Knowledge suggestions
+    # -----------------------------------------------------
+
     st.subheader(
         "📚 Knowledge 建議"
     )
@@ -2837,6 +2521,10 @@ def show_gem_ai_optimization(
             ""
         )
     )
+
+    # -----------------------------------------------------
+    # Overall
+    # -----------------------------------------------------
 
     st.subheader(
         "💡 整體建議"
@@ -2900,12 +2588,10 @@ def show_gem_ai_optimization(
 
 
 # =========================================================
-# 38. Chat
+# 29. Chat
 # =========================================================
 
-def show_chat(
-    gem
-):
+def show_chat(gem):
 
     st.subheader(
         "💬 GEM 對話"
@@ -2959,7 +2645,6 @@ def show_chat(
     )
 
     if current_session not in session_ids:
-
         current_session = session_ids[0]
 
         st.session_state.selected_chat_session_id = (
@@ -3045,16 +2730,11 @@ def show_chat(
 
         with st.chat_message(
             role
-            if role in [
-                "user",
-                "assistant"
-            ]
+            if role in ["user", "assistant"]
             else "assistant"
         ):
 
-            st.write(
-                content
-            )
+            st.write(content)
 
     user_message = st.chat_input(
         "輸入訊息...",
@@ -3092,7 +2772,7 @@ def show_chat(
 
 
 # =========================================================
-# 39. Prompt Generator
+# 30. Gemini Prompt Generator
 # =========================================================
 
 def show_prompt_generator():
@@ -3188,7 +2868,7 @@ GEM 目的：
 
 
 # =========================================================
-# 40. Chat History
+# 31. Chat history
 # =========================================================
 
 def show_chat_history():
@@ -3216,13 +2896,9 @@ def show_chat_history():
         )
 
         gem_name = (
-            gem.get(
-                "name",
-                "未知 GEM"
-            )
+            gem.get("name", "未知 GEM")
             if gem
-            else
-            "未知 GEM"
+            else "未知 GEM"
         )
 
         with st.container(
@@ -3258,7 +2934,7 @@ def show_chat_history():
 
 
 # =========================================================
-# 41. Export / Backup
+# 32. Export / Backup
 # =========================================================
 
 def show_export():
@@ -3320,7 +2996,7 @@ def show_export():
 
 
 # =========================================================
-# 42. Templates
+# 33. Templates
 # =========================================================
 
 def show_templates():
@@ -3353,7 +3029,8 @@ def show_templates():
             "role":
                 "你是一位溫暖、耐心、尊重使用者的 AI 陪聊夥伴。",
             "workflow":
-                "先理解使用者需求，再自然回應，避免過度說教。",
+                "先理解使用者情緒與需求，再自然回應，"
+                "避免過度說教。",
             "greeting":
                 "嗨，很高興陪你聊聊。今天想從哪裡開始？"
         },
@@ -3409,7 +3086,7 @@ def show_templates():
 
 
 # =========================================================
-# 43. Import
+# 34. Import
 # =========================================================
 
 def show_import():
@@ -3426,11 +3103,9 @@ def show_import():
     )
 
     if not uploaded:
-
         st.info(
             "請選擇 GEM JSON 檔案。"
         )
-
         return
 
     try:
@@ -3453,17 +3128,11 @@ def show_import():
         "JSON 讀取成功。"
     )
 
-    if isinstance(
-        data,
-        dict
-    ):
+    if isinstance(data, dict):
 
         data = [data]
 
-    if not isinstance(
-        data,
-        list
-    ):
+    if not isinstance(data, list):
 
         st.error(
             "JSON 格式不正確。"
@@ -3540,7 +3209,7 @@ def show_import():
 
 
 # =========================================================
-# 44. Sidebar Navigation
+# 35. Sidebar navigation
 # =========================================================
 
 def show_sidebar():
@@ -3564,28 +3233,20 @@ def show_sidebar():
         "匯入 GEM",
     ]
 
-    current_page = (
-        st.session_state.page
-    )
+    current_page = st.session_state.page
 
     selected_page = st.sidebar.radio(
         "功能",
         pages,
         index=(
-            pages.index(
-                current_page
-            )
+            pages.index(current_page)
             if current_page in pages
             else 0
         ),
         key="main_navigation"
     )
 
-    if (
-        selected_page
-        !=
-        st.session_state.page
-    ):
+    if selected_page != st.session_state.page:
 
         st.session_state.page = (
             selected_page
@@ -3615,7 +3276,7 @@ def show_sidebar():
 
 
 # =========================================================
-# 45. Router
+# 36. Router
 # =========================================================
 
 show_sidebar()
@@ -3664,13 +3325,12 @@ else:
 
 
 # =========================================================
-# 46. Footer
+# 37. Footer
 # =========================================================
 
 st.markdown("---")
 
 st.caption(
-    "GEM Builder Cloud｜Day 32-B｜"
-    "Gemini 3.6 Flash｜"
+    "GEM Builder Cloud｜Day 32-A｜"
     "Responsive Desktop + Mobile + Tablet"
 )
