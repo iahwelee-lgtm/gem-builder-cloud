@@ -1,10 +1,28 @@
 import streamlit as st
 import json
-import time
 import html
 from datetime import datetime
 from google import genai
 from supabase import create_client
+
+
+# =========================================================
+# GEM Builder Cloud 2.0
+# Day 24-A
+# 專業版 Dashboard ＋ GEM Card
+#
+# 基礎版本：
+# GitHub Day 23-E
+#
+# 本版本重點：
+# 1. 專業 Dashboard
+# 2. GEM 卡片
+# 3. 快速操作區
+# 4. 最近 GEM
+# 5. 保留 Gemini 自動模型偵測
+# 6. 保留 Supabase
+# 7. 保留所有既有功能
+# =========================================================
 
 
 # =========================================================
@@ -20,7 +38,7 @@ st.set_page_config(
 
 
 # =========================================================
-# 2. CSS：手機／電腦響應式＋模型選單修復
+# 2. CSS
 # =========================================================
 
 st.markdown(
@@ -28,7 +46,7 @@ st.markdown(
     <style>
 
     /* =====================================================
-       全站設定
+       全站
        ===================================================== */
 
     .block-container {
@@ -37,21 +55,26 @@ st.markdown(
         max-width: 1400px;
     }
 
+
     /* =====================================================
        標題
        ===================================================== */
 
     h1 {
         font-size: 2.2rem !important;
+        font-weight: 750 !important;
     }
 
     h2 {
         font-size: 1.7rem !important;
+        font-weight: 700 !important;
     }
 
     h3 {
         font-size: 1.3rem !important;
+        font-weight: 700 !important;
     }
+
 
     /* =====================================================
        按鈕
@@ -69,6 +92,7 @@ st.markdown(
         font-weight: 600;
     }
 
+
     /* =====================================================
        輸入框
        ===================================================== */
@@ -78,8 +102,9 @@ st.markdown(
         font-size: 16px !important;
     }
 
+
     /* =====================================================
-       Selectbox 修復
+       Selectbox
        ===================================================== */
 
     [data-baseweb="select"] {
@@ -94,31 +119,143 @@ st.markdown(
         z-index: 999999 !important;
     }
 
+
     /* =====================================================
-       模型狀態卡
+       模型狀態
        ===================================================== */
 
     .model-status {
-        padding: 12px 16px;
+        padding: 13px 17px;
         border-radius: 12px;
         border: 1px solid rgba(128,128,128,0.25);
         margin-bottom: 20px;
         font-size: 15px;
+        font-weight: 600;
     }
 
+
     /* =====================================================
-       GEM 卡片
+       Dashboard Hero
        ===================================================== */
 
-    .gem-card {
-        padding: 18px;
-        border: 1px solid rgba(128,128,128,0.25);
-        border-radius: 14px;
+    .dashboard-hero {
+        padding: 30px;
+        border-radius: 20px;
+        border: 1px solid rgba(128,128,128,0.22);
+        margin-bottom: 25px;
+    }
+
+    .dashboard-hero-title {
+        font-size: 30px;
+        font-weight: 800;
+        margin-bottom: 8px;
+    }
+
+    .dashboard-hero-subtitle {
+        font-size: 16px;
+        opacity: 0.75;
+        line-height: 1.7;
+    }
+
+
+    /* =====================================================
+       Dashboard Section
+       ===================================================== */
+
+    .dashboard-section-title {
+        font-size: 20px;
+        font-weight: 750;
+        margin-top: 10px;
         margin-bottom: 15px;
     }
 
+
     /* =====================================================
-       聊天訊息
+       Dashboard Stats
+       ===================================================== */
+
+    .stat-card {
+        padding: 20px;
+        border-radius: 16px;
+        border: 1px solid rgba(128,128,128,0.22);
+        min-height: 125px;
+    }
+
+    .stat-icon {
+        font-size: 25px;
+        margin-bottom: 8px;
+    }
+
+    .stat-label {
+        font-size: 14px;
+        opacity: 0.7;
+    }
+
+    .stat-value {
+        font-size: 30px;
+        font-weight: 800;
+        margin-top: 3px;
+    }
+
+    .stat-description {
+        font-size: 12px;
+        opacity: 0.6;
+        margin-top: 4px;
+    }
+
+
+    /* =====================================================
+       GEM Card
+       ===================================================== */
+
+    .gem-card {
+        padding: 20px;
+        border: 1px solid rgba(128,128,128,0.22);
+        border-radius: 16px;
+        margin-bottom: 8px;
+        min-height: 210px;
+    }
+
+    .gem-card-icon {
+        font-size: 28px;
+        margin-bottom: 8px;
+    }
+
+    .gem-card-title {
+        font-size: 20px;
+        font-weight: 750;
+        margin-bottom: 8px;
+    }
+
+    .gem-card-description {
+        font-size: 14px;
+        line-height: 1.6;
+        opacity: 0.75;
+        min-height: 46px;
+    }
+
+    .gem-card-meta {
+        margin-top: 15px;
+        padding-top: 12px;
+        border-top: 1px solid rgba(128,128,128,0.15);
+        font-size: 12px;
+        opacity: 0.7;
+    }
+
+
+    /* =====================================================
+       Quick Action
+       ===================================================== */
+
+    .quick-action-label {
+        font-size: 12px;
+        opacity: 0.65;
+        margin-bottom: 3px;
+    }
+
+
+    /* =====================================================
+       Chat
        ===================================================== */
 
     .chat-user {
@@ -135,6 +272,7 @@ st.markdown(
         border: 1px solid rgba(128,128,128,0.2);
     }
 
+
     /* =====================================================
        回到頁首
        ===================================================== */
@@ -143,8 +281,9 @@ st.markdown(
         height: 20px;
     }
 
+
     /* =====================================================
-       手機版
+       手機
        ===================================================== */
 
     @media (max-width: 768px) {
@@ -153,6 +292,7 @@ st.markdown(
             padding-left: 1rem;
             padding-right: 1rem;
             padding-top: 1rem;
+            padding-bottom: 4rem;
         }
 
         h1 {
@@ -197,8 +337,6 @@ st.markdown(
             min-width: 105px !important;
         }
 
-        /* 手機 Selectbox */
-
         [data-baseweb="select"] {
             width: 100% !important;
         }
@@ -209,6 +347,37 @@ st.markdown(
 
         .model-status {
             font-size: 14px;
+        }
+
+        .dashboard-hero {
+            padding: 22px;
+            border-radius: 16px;
+        }
+
+        .dashboard-hero-title {
+            font-size: 23px;
+        }
+
+        .dashboard-hero-subtitle {
+            font-size: 14px;
+        }
+
+        .stat-card {
+            min-height: 105px;
+            padding: 15px;
+        }
+
+        .stat-value {
+            font-size: 25px;
+        }
+
+        .gem-card {
+            min-height: auto;
+            padding: 17px;
+        }
+
+        .gem-card-title {
+            font-size: 18px;
         }
 
     }
@@ -229,7 +398,7 @@ GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
 
 
 # =========================================================
-# 4. Supabase Client
+# 4. Supabase
 # =========================================================
 
 supabase = create_client(
@@ -283,7 +452,6 @@ def get_available_models():
                 if not model_name:
                     continue
 
-                # 移除 models/ 前綴
                 if model_name.startswith("models/"):
 
                     model_name = model_name.replace(
@@ -291,15 +459,12 @@ def get_available_models():
                         ""
                     )
 
-                # 只保留 Gemini
                 if "gemini" not in model_name.lower():
                     continue
 
-                # 排除 embedding
                 if "embedding" in model_name.lower():
                     continue
 
-                # 排除 imagen
                 if "imagen" in model_name.lower():
                     continue
 
@@ -329,43 +494,38 @@ def get_available_models():
 # =========================================================
 
 if "page" not in st.session_state:
-
     st.session_state.page = "首頁"
 
 
 if "selected_gem_id" not in st.session_state:
-
     st.session_state.selected_gem_id = None
 
 
 if "selected_chat_session_id" not in st.session_state:
-
     st.session_state.selected_chat_session_id = None
 
 
 if "gemini_result" not in st.session_state:
-
     st.session_state.gemini_result = ""
 
 
 if "optimizer_result" not in st.session_state:
-
     st.session_state.optimizer_result = ""
 
 
 if "delete_confirm" not in st.session_state:
-
     st.session_state.delete_confirm = None
 
 
 if "knowledge_delete_confirm" not in st.session_state:
-
     st.session_state.knowledge_delete_confirm = None
 
 
 if "available_models" not in st.session_state:
 
-    st.session_state.available_models = get_available_models()
+    st.session_state.available_models = (
+        get_available_models()
+    )
 
 
 if not st.session_state.available_models:
@@ -381,8 +541,6 @@ if "selected_model" not in st.session_state:
         st.session_state.available_models[0]
     )
 
-
-# 確保目前模型仍存在
 
 if (
     st.session_state.selected_model
@@ -423,7 +581,7 @@ def ask_gemini(prompt):
 
 
 # =========================================================
-# 9. 模型狀態顯示
+# 9. 模型狀態
 # =========================================================
 
 def show_model_status():
@@ -950,18 +1108,171 @@ def gem_to_json(gem):
 
 
 # =========================================================
-# 27. 首頁
+# 27. Dashboard：統計卡片
+# =========================================================
+
+def show_dashboard_stats(
+    gems,
+    sessions,
+    knowledge_count
+):
+
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+
+        st.markdown(
+            f"""
+            <div class="stat-card">
+                <div class="stat-icon">🧩</div>
+                <div class="stat-label">我的 GEM</div>
+                <div class="stat-value">{len(gems)}</div>
+                <div class="stat-description">
+                    雲端 AI GEM
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+    with col2:
+
+        st.markdown(
+            f"""
+            <div class="stat-card">
+                <div class="stat-icon">📚</div>
+                <div class="stat-label">Knowledge</div>
+                <div class="stat-value">{knowledge_count}</div>
+                <div class="stat-description">
+                    知識資料
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+    with col3:
+
+        st.markdown(
+            f"""
+            <div class="stat-card">
+                <div class="stat-icon">💬</div>
+                <div class="stat-label">聊天紀錄</div>
+                <div class="stat-value">{len(sessions)}</div>
+                <div class="stat-description">
+                    AI 對話 Session
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+
+# =========================================================
+# 28. GEM Card
+# =========================================================
+
+def show_gem_card(
+    gem,
+    key_prefix="gem"
+):
+
+    gem_id = gem.get("id")
+
+    name = gem.get(
+        "name",
+        "未命名 GEM"
+    )
+
+    role = gem.get(
+        "role",
+        ""
+    )
+
+    description = (
+        role[:150]
+        if role
+        else "尚未設定 GEM 描述。"
+    )
+
+    st.markdown(
+        f"""
+        <div class="gem-card">
+
+            <div class="gem-card-icon">
+                🧩
+            </div>
+
+            <div class="gem-card-title">
+                {html.escape(str(name))}
+            </div>
+
+            <div class="gem-card-description">
+                {html.escape(str(description))}
+            </div>
+
+            <div class="gem-card-meta">
+                🤖 {html.escape(
+                    str(st.session_state.selected_model)
+                )}
+                &nbsp;&nbsp;•&nbsp;&nbsp;
+                ☁️ Cloud GEM
+            </div>
+
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    if st.button(
+        "📂 開啟 GEM",
+        key=f"{key_prefix}_open_{gem_id}",
+        use_container_width=True
+    ):
+
+        st.session_state.selected_gem_id = gem_id
+
+        st.session_state.page = "GEM 詳細"
+
+        st.rerun()
+
+
+# =========================================================
+# 29. 首頁 Dashboard
 # =========================================================
 
 def show_home():
 
-    st.title("☁️ GEM Builder Cloud")
+    # =====================================================
+    # Hero
+    # =====================================================
 
-    st.success(
-        "個人雲端 AI GEM 工作平台"
+    st.markdown(
+        """
+        <div class="dashboard-hero">
+
+            <div class="dashboard-hero-title">
+                ☁️ GEM Builder Cloud
+            </div>
+
+            <div class="dashboard-hero-subtitle">
+                你的個人 AI GEM 工作平台
+                <br>
+                建立、管理、測試、優化你的 AI GEM。
+            </div>
+
+        </div>
+        """,
+        unsafe_allow_html=True
     )
 
+
     show_model_status()
+
+
+    # =====================================================
+    # 取得資料
+    # =====================================================
 
     gems = get_gems()
 
@@ -977,39 +1288,52 @@ def show_home():
             )
         )
 
-    col1, col2, col3 = st.columns(3)
 
-    with col1:
+    # =====================================================
+    # 統計
+    # =====================================================
 
-        st.metric(
-            "🧩 GEM",
-            len(gems)
-        )
+    st.markdown(
+        """
+        <div class="dashboard-section-title">
+            📊 工作平台概況
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
-    with col2:
+    show_dashboard_stats(
+        gems,
+        sessions,
+        knowledge_count
+    )
 
-        st.metric(
-            "📚 Knowledge",
-            knowledge_count
-        )
 
-    with col3:
+    st.write("")
 
-        st.metric(
-            "💬 聊天",
-            len(sessions)
-        )
 
-    st.divider()
+    # =====================================================
+    # 快速操作
+    # =====================================================
 
-    st.subheader("⚡ 快速操作")
+    st.markdown(
+        """
+        <div class="dashboard-section-title">
+            ⚡ 快速操作
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
 
     col1, col2 = st.columns(2)
+
 
     with col1:
 
         if st.button(
             "➕ 建立 GEM",
+            type="primary",
             use_container_width=True
         ):
 
@@ -1017,34 +1341,11 @@ def show_home():
 
             st.rerun()
 
+
     with col2:
 
         if st.button(
-            "💬 開始對話",
-            use_container_width=True
-        ):
-
-            st.session_state.page = "GEM 對話"
-
-            st.rerun()
-
-    col3, col4 = st.columns(2)
-
-    with col3:
-
-        if st.button(
-            "🧩 GEM 工作區",
-            use_container_width=True
-        ):
-
-            st.session_state.page = "GEM 工作區"
-
-            st.rerun()
-
-    with col4:
-
-        if st.button(
-            "🤖 AI 自動生成",
+            "🤖 AI 自動生成 GEM",
             use_container_width=True
         ):
 
@@ -1052,51 +1353,127 @@ def show_home():
 
             st.rerun()
 
+
+    col3, col4 = st.columns(2)
+
+
+    with col3:
+
+        if st.button(
+            "🧩 開啟 GEM 工作區",
+            use_container_width=True
+        ):
+
+            st.session_state.page = "GEM 工作區"
+
+            st.rerun()
+
+
+    with col4:
+
+        if st.button(
+            "💬 開始 GEM 對話",
+            use_container_width=True
+        ):
+
+            st.session_state.page = "GEM 對話"
+
+            st.rerun()
+
+
     st.divider()
 
-    st.subheader("🕘 最近 GEM")
+
+    # =====================================================
+    # 最近 GEM
+    # =====================================================
+
+    st.markdown(
+        """
+        <div class="dashboard-section-title">
+            🧩 最近使用的 GEM
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
 
     if not gems:
 
         st.info(
-            "目前還沒有 GEM。"
+            "目前還沒有 GEM。建立你的第一個 GEM 開始使用吧！"
         )
 
-    else:
+        if st.button(
+            "✨ 建立第一個 GEM",
+            type="primary",
+            use_container_width=True
+        ):
 
-        for gem in gems[:5]:
+            st.session_state.page = "建立 GEM"
 
-            with st.container(border=True):
+            st.rerun()
 
-                st.markdown(
-                    f"### 🧩 {gem.get('name', '未命名 GEM')}"
+        return
+
+
+    recent_gems = gems[:6]
+
+
+    # =====================================================
+    # 電腦：三欄
+    # 手機：Streamlit 自動堆疊
+    # =====================================================
+
+    for row_start in range(
+        0,
+        len(recent_gems),
+        3
+    ):
+
+        row = recent_gems[
+            row_start:row_start + 3
+        ]
+
+        columns = st.columns(
+            len(row)
+        )
+
+        for index, gem in enumerate(row):
+
+            with columns[index]:
+
+                show_gem_card(
+                    gem,
+                    key_prefix=f"dashboard_{row_start}_{index}"
                 )
 
-                role = gem.get("role", "")
 
-                if role:
+    st.divider()
 
-                    st.caption(
-                        role[:150]
-                    )
 
-                if st.button(
-                    "📂 開啟 GEM",
-                    key=f"home_{gem.get('id')}",
-                    use_container_width=True
-                ):
+    # =====================================================
+    # 更多 GEM
+    # =====================================================
 
-                    st.session_state.selected_gem_id = (
-                        gem.get("id")
-                    )
+    if len(gems) > 6:
 
-                    st.session_state.page = "GEM 詳細"
+        st.caption(
+            f"目前共有 {len(gems)} 個 GEM"
+        )
 
-                    st.rerun()
+        if st.button(
+            "查看全部 GEM →",
+            use_container_width=True
+        ):
+
+            st.session_state.page = "GEM 工作區"
+
+            st.rerun()
 
 
 # =========================================================
-# 28. 建立 GEM
+# 30. 建立 GEM
 # =========================================================
 
 def show_create_gem():
@@ -1130,7 +1507,9 @@ def show_create_gem():
 
         if not name.strip():
 
-            st.warning("請輸入 GEM 名稱。")
+            st.warning(
+                "請輸入 GEM 名稱。"
+            )
 
             return
 
@@ -1143,7 +1522,9 @@ def show_create_gem():
 
         if result:
 
-            st.success("GEM 建立成功！")
+            st.success(
+                "GEM 建立成功！"
+            )
 
             st.session_state.selected_gem_id = (
                 result[0]["id"]
@@ -1155,7 +1536,7 @@ def show_create_gem():
 
 
 # =========================================================
-# 29. GEM 工作區
+# 31. GEM 工作區
 # =========================================================
 
 def show_workspace():
@@ -1166,7 +1547,9 @@ def show_workspace():
 
     if not gems:
 
-        st.info("目前沒有 GEM。")
+        st.info(
+            "目前沒有 GEM。"
+        )
 
         return
 
@@ -1181,7 +1564,10 @@ def show_workspace():
             gem for gem in gems
 
             if search.lower()
-            in gem.get("name", "").lower()
+            in gem.get(
+                "name",
+                ""
+            ).lower()
 
         ]
 
@@ -1189,23 +1575,32 @@ def show_workspace():
         f"找到 {len(gems)} 個 GEM"
     )
 
-    for gem in gems:
+
+    for index, gem in enumerate(gems):
 
         gem_id = gem.get("id")
 
-        with st.container(border=True):
+        with st.container(
+            border=True
+        ):
 
             st.markdown(
                 f"### 🧩 {gem.get('name')}"
             )
 
-            role = gem.get("role", "")
+            role = gem.get(
+                "role",
+                ""
+            )
 
             if role:
 
-                st.write(role[:200])
+                st.write(
+                    role[:200]
+                )
 
             col1, col2 = st.columns(2)
+
 
             with col1:
 
@@ -1215,11 +1610,16 @@ def show_workspace():
                     use_container_width=True
                 ):
 
-                    st.session_state.selected_gem_id = gem_id
+                    st.session_state.selected_gem_id = (
+                        gem_id
+                    )
 
-                    st.session_state.page = "GEM 詳細"
+                    st.session_state.page = (
+                        "GEM 詳細"
+                    )
 
                     st.rerun()
+
 
             with col2:
 
@@ -1229,24 +1629,32 @@ def show_workspace():
                     use_container_width=True
                 ):
 
-                    st.session_state.selected_gem_id = gem_id
+                    st.session_state.selected_gem_id = (
+                        gem_id
+                    )
 
-                    st.session_state.page = "GEM 對話"
+                    st.session_state.page = (
+                        "GEM 對話"
+                    )
 
                     st.rerun()
 
 
 # =========================================================
-# 30. GEM 詳細
+# 32. GEM 詳細
 # =========================================================
 
 def show_gem_detail():
 
-    gem_id = st.session_state.selected_gem_id
+    gem_id = (
+        st.session_state.selected_gem_id
+    )
 
     if not gem_id:
 
-        st.warning("尚未選擇 GEM。")
+        st.warning(
+            "尚未選擇 GEM。"
+        )
 
         return
 
@@ -1254,7 +1662,9 @@ def show_gem_detail():
 
     if not gem:
 
-        st.error("找不到 GEM。")
+        st.error(
+            "找不到 GEM。"
+        )
 
         return
 
@@ -1263,6 +1673,7 @@ def show_gem_detail():
     )
 
     show_model_status()
+
 
     tabs = st.tabs(
         [
@@ -1275,37 +1686,53 @@ def show_gem_detail():
         ]
     )
 
-    # -----------------------------------------------------
+
+    # =====================================================
     # TAB 內容
-    # -----------------------------------------------------
+    # =====================================================
 
     with tabs[0]:
 
-        st.subheader("Role")
+        st.subheader(
+            "Role"
+        )
 
         st.text_area(
             "Role",
-            value=gem.get("role", ""),
+            value=gem.get(
+                "role",
+                ""
+            ),
             height=220,
             disabled=True,
             key=f"view_role_{gem_id}"
         )
 
-        st.subheader("Workflow & Rules")
+        st.subheader(
+            "Workflow & Rules"
+        )
 
         st.text_area(
             "Workflow",
-            value=gem.get("workflow", ""),
+            value=gem.get(
+                "workflow",
+                ""
+            ),
             height=300,
             disabled=True,
             key=f"view_workflow_{gem_id}"
         )
 
-        st.subheader("Greeting")
+        st.subheader(
+            "Greeting"
+        )
 
         st.text_area(
             "Greeting",
-            value=gem.get("greeting", ""),
+            value=gem.get(
+                "greeting",
+                ""
+            ),
             height=180,
             disabled=True,
             key=f"view_greeting_{gem_id}"
@@ -1313,7 +1740,9 @@ def show_gem_detail():
 
         st.divider()
 
+
         col1, col2 = st.columns(2)
+
 
         with col1:
 
@@ -1324,6 +1753,7 @@ def show_gem_detail():
                 use_container_width=True
             )
 
+
         with col2:
 
             st.download_button(
@@ -1333,7 +1763,9 @@ def show_gem_detail():
                 use_container_width=True
             )
 
+
         st.divider()
+
 
         if st.button(
             "📋 一鍵複製 GEM",
@@ -1342,13 +1774,23 @@ def show_gem_detail():
 
             result = create_gem(
 
-                gem.get("name") + " - 複製版",
+                gem.get("name")
+                + " - 複製版",
 
-                gem.get("role", ""),
+                gem.get(
+                    "role",
+                    ""
+                ),
 
-                gem.get("workflow", ""),
+                gem.get(
+                    "workflow",
+                    ""
+                ),
 
-                gem.get("greeting", "")
+                gem.get(
+                    "greeting",
+                    ""
+                )
 
             )
 
@@ -1356,7 +1798,9 @@ def show_gem_detail():
 
                 new_id = result[0]["id"]
 
-                knowledge_list = get_knowledge(gem_id)
+                knowledge_list = (
+                    get_knowledge(gem_id)
+                )
 
                 for item in knowledge_list:
 
@@ -1364,9 +1808,15 @@ def show_gem_detail():
 
                         new_id,
 
-                        item.get("title", ""),
+                        item.get(
+                            "title",
+                            ""
+                        ),
 
-                        item.get("content", "")
+                        item.get(
+                            "content",
+                            ""
+                        )
 
                     )
 
@@ -1374,39 +1824,54 @@ def show_gem_detail():
                     "GEM 已完整複製！"
                 )
 
-                st.session_state.selected_gem_id = new_id
+                st.session_state.selected_gem_id = (
+                    new_id
+                )
 
                 st.rerun()
 
-    # -----------------------------------------------------
+
+    # =====================================================
     # TAB 編輯
-    # -----------------------------------------------------
+    # =====================================================
 
     with tabs[1]:
 
         name = st.text_input(
             "GEM 名稱",
-            value=gem.get("name", ""),
+            value=gem.get(
+                "name",
+                ""
+            ),
             key=f"name_{gem_id}"
         )
 
         role = st.text_area(
             "Role",
-            value=gem.get("role", ""),
+            value=gem.get(
+                "role",
+                ""
+            ),
             height=220,
             key=f"role_{gem_id}"
         )
 
         workflow = st.text_area(
             "Workflow & Rules",
-            value=gem.get("workflow", ""),
+            value=gem.get(
+                "workflow",
+                ""
+            ),
             height=300,
             key=f"workflow_{gem_id}"
         )
 
         greeting = st.text_area(
             "Greeting",
-            value=gem.get("greeting", ""),
+            value=gem.get(
+                "greeting",
+                ""
+            ),
             height=180,
             key=f"greeting_{gem_id}"
         )
@@ -1427,23 +1892,31 @@ def show_gem_detail():
 
             if result:
 
-                st.success("更新成功！")
+                st.success(
+                    "更新成功！"
+                )
 
                 st.rerun()
 
-    # -----------------------------------------------------
+
+    # =====================================================
     # TAB Knowledge
-    # -----------------------------------------------------
+    # =====================================================
 
     with tabs[2]:
 
-        knowledge_list = get_knowledge(gem_id)
+        knowledge_list = (
+            get_knowledge(gem_id)
+        )
 
         st.info(
             f"目前共有 {len(knowledge_list)} 筆 Knowledge"
         )
 
-        with st.expander("➕ 新增 Knowledge"):
+
+        with st.expander(
+            "➕ 新增 Knowledge"
+        ):
 
             title = st.text_input(
                 "Knowledge 標題",
@@ -1469,35 +1942,53 @@ def show_gem_detail():
                         content
                     )
 
-                    st.success("新增成功！")
+                    st.success(
+                        "新增成功！"
+                    )
 
                     st.rerun()
 
+
         for item in knowledge_list:
 
-            knowledge_id = item.get("id")
+            knowledge_id = item.get(
+                "id"
+            )
 
-            with st.container(border=True):
+            with st.container(
+                border=True
+            ):
 
                 st.subheader(
-                    item.get("title")
+                    item.get(
+                        "title"
+                    )
                 )
 
                 st.write(
-                    item.get("content")
+                    item.get(
+                        "content"
+                    )
                 )
 
-                with st.expander("✏️ 編輯"):
+
+                with st.expander(
+                    "✏️ 編輯"
+                ):
 
                     new_title = st.text_input(
                         "標題",
-                        value=item.get("title"),
+                        value=item.get(
+                            "title"
+                        ),
                         key=f"edit_title_{knowledge_id}"
                     )
 
                     new_content = st.text_area(
                         "內容",
-                        value=item.get("content"),
+                        value=item.get(
+                            "content"
+                        ),
                         height=220,
                         key=f"edit_content_{knowledge_id}"
                     )
@@ -1514,9 +2005,12 @@ def show_gem_detail():
                             new_content
                         )
 
-                        st.success("更新成功！")
+                        st.success(
+                            "更新成功！"
+                        )
 
                         st.rerun()
+
 
                 if st.button(
                     "🗑️ 刪除",
@@ -1530,9 +2024,10 @@ def show_gem_detail():
 
                     st.rerun()
 
-    # -----------------------------------------------------
+
+    # =====================================================
     # TAB AI 優化
-    # -----------------------------------------------------
+    # =====================================================
 
     with tabs[3]:
 
@@ -1541,6 +2036,7 @@ def show_gem_detail():
         )
 
         show_model_status()
+
 
         if st.button(
             "✨ 開始 AI 優化",
@@ -1585,11 +2081,14 @@ Workflow & Rules：
 Greeting：
 """
 
-            with st.spinner("AI 正在分析 GEM..."):
+            with st.spinner(
+                "AI 正在分析 GEM..."
+            ):
 
                 st.session_state.optimizer_result = (
                     ask_gemini(prompt)
                 )
+
 
         if st.session_state.optimizer_result:
 
@@ -1599,13 +2098,16 @@ Greeting：
                 height=600
             )
 
-    # -----------------------------------------------------
+
+    # =====================================================
     # TAB 測試
-    # -----------------------------------------------------
+    # =====================================================
 
     with tabs[4]:
 
-        st.subheader("🧪 GEM 測試")
+        st.subheader(
+            "🧪 GEM 測試"
+        )
 
         show_model_status()
 
@@ -1642,23 +2144,35 @@ Greeting：
 {user_message}
 """
 
-            with st.spinner("GEM 思考中..."):
+            with st.spinner(
+                "GEM 思考中..."
+            ):
 
-                result = ask_gemini(prompt)
+                result = ask_gemini(
+                    prompt
+                )
 
-            st.subheader("🤖 GEM 回覆")
+            st.subheader(
+                "🤖 GEM 回覆"
+            )
 
-            st.write(result)
+            st.write(
+                result
+            )
 
-    # -----------------------------------------------------
+
+    # =====================================================
     # TAB 對話
-    # -----------------------------------------------------
+    # =====================================================
 
     with tabs[5]:
 
-        st.subheader("💬 GEM 對話")
+        st.subheader(
+            "💬 GEM 對話"
+        )
 
         show_model_status()
+
 
         if st.button(
             "🚀 開始新對話",
@@ -1681,7 +2195,13 @@ Greeting：
 
                 st.rerun()
 
-        sessions = get_chat_sessions_by_gem(gem_id)
+
+        sessions = (
+            get_chat_sessions_by_gem(
+                gem_id
+            )
+        )
+
 
         if sessions:
 
@@ -1697,6 +2217,7 @@ Greeting：
 
             }
 
+
             if (
                 st.session_state.selected_chat_session_id
                 not in session_options
@@ -1705,6 +2226,7 @@ Greeting：
                 st.session_state.selected_chat_session_id = (
                     sessions[0]["id"]
                 )
+
 
             selected_session = st.selectbox(
 
@@ -1721,35 +2243,52 @@ Greeting：
 
             )
 
+
             st.session_state.selected_chat_session_id = (
                 selected_session
             )
+
 
             messages = get_chat_messages(
                 selected_session
             )
 
+
             for message in messages:
 
-                role = message.get("role")
+                role = message.get(
+                    "role"
+                )
 
-                content = message.get("content")
+                content = message.get(
+                    "content"
+                )
 
                 if role == "user":
 
-                    with st.chat_message("user"):
+                    with st.chat_message(
+                        "user"
+                    ):
 
-                        st.write(content)
+                        st.write(
+                            content
+                        )
 
                 else:
 
-                    with st.chat_message("assistant"):
+                    with st.chat_message(
+                        "assistant"
+                    ):
 
-                        st.write(content)
+                        st.write(
+                            content
+                        )
+
 
             user_input = st.chat_input(
                 "輸入訊息..."
             )
+
 
             if user_input:
 
@@ -1759,11 +2298,13 @@ Greeting：
                     user_input
                 )
 
+
                 history_text = ""
 
                 messages = get_chat_messages(
                     selected_session
                 )
+
 
                 for message in messages[-12:]:
 
@@ -1772,9 +2313,16 @@ Greeting：
                         f"{message.get('content')}"
                     )
 
-                knowledge_list = get_knowledge(gem_id)
+
+                knowledge_list = (
+                    get_knowledge(
+                        gem_id
+                    )
+                )
+
 
                 knowledge_text = ""
+
 
                 for item in knowledge_list:
 
@@ -1785,6 +2333,7 @@ Knowledge：
 
 {item.get("content", "")}
 """
+
 
                 prompt = f"""
 你現在是一個 GEM。
@@ -1811,9 +2360,15 @@ Greeting：
 使用繁體中文。
 """
 
-                with st.spinner("AI 回覆中..."):
 
-                    ai_response = ask_gemini(prompt)
+                with st.spinner(
+                    "AI 回覆中..."
+                ):
+
+                    ai_response = ask_gemini(
+                        prompt
+                    )
+
 
                 create_chat_message(
                     selected_session,
@@ -1823,6 +2378,7 @@ Greeting：
 
                 st.rerun()
 
+
         else:
 
             st.info(
@@ -1831,12 +2387,14 @@ Greeting：
 
 
 # =========================================================
-# 31. 獨立 GEM 對話頁面
+# 33. 獨立 GEM 對話
 # =========================================================
 
 def show_chat():
 
-    st.title("💬 GEM 對話中心")
+    st.title(
+        "💬 GEM 對話中心"
+    )
 
     show_model_status()
 
@@ -1844,9 +2402,12 @@ def show_chat():
 
     if not gems:
 
-        st.info("請先建立 GEM。")
+        st.info(
+            "請先建立 GEM。"
+        )
 
         return
+
 
     gem_options = {
 
@@ -1857,7 +2418,9 @@ def show_chat():
 
     }
 
+
     default_index = 0
+
 
     if st.session_state.selected_gem_id in gem_options:
 
@@ -1867,11 +2430,14 @@ def show_chat():
             st.session_state.selected_gem_id
         )
 
+
     selected_gem_id = st.selectbox(
 
         "選擇 GEM",
 
-        options=list(gem_options.keys()),
+        options=list(
+            gem_options.keys()
+        ),
 
         index=default_index,
 
@@ -1880,13 +2446,21 @@ def show_chat():
 
     )
 
-    st.session_state.selected_gem_id = selected_gem_id
 
-    gem = get_gem(selected_gem_id)
+    st.session_state.selected_gem_id = (
+        selected_gem_id
+    )
+
+
+    gem = get_gem(
+        selected_gem_id
+    )
+
 
     st.subheader(
         f"🧩 {gem.get('name')}"
     )
+
 
     if st.button(
         "➕ 建立新聊天",
@@ -1899,10 +2473,12 @@ def show_chat():
             f"{datetime.now().strftime('%Y/%m/%d %H:%M')}"
         )
 
+
         result = create_chat_session(
             selected_gem_id,
             title
         )
+
 
         if result:
 
@@ -1912,24 +2488,33 @@ def show_chat():
 
             st.rerun()
 
+
     sessions = get_chat_sessions_by_gem(
         selected_gem_id
     )
 
+
     if not sessions:
 
-        st.info("請先建立新聊天。")
+        st.info(
+            "請先建立新聊天。"
+        )
 
         return
+
 
     session_options = {
 
         session.get("id"):
-        session.get("title", "未命名聊天")
+        session.get(
+            "title",
+            "未命名聊天"
+        )
 
         for session in sessions
 
     }
+
 
     if (
         st.session_state.selected_chat_session_id
@@ -1939,6 +2524,7 @@ def show_chat():
         st.session_state.selected_chat_session_id = (
             sessions[0]["id"]
         )
+
 
     session_id = st.selectbox(
 
@@ -1953,9 +2539,16 @@ def show_chat():
 
     )
 
-    st.session_state.selected_chat_session_id = session_id
 
-    messages = get_chat_messages(session_id)
+    st.session_state.selected_chat_session_id = (
+        session_id
+    )
+
+
+    messages = get_chat_messages(
+        session_id
+    )
+
 
     for message in messages:
 
@@ -1971,9 +2564,11 @@ def show_chat():
                 message.get("content")
             )
 
+
     user_input = st.chat_input(
         "輸入訊息..."
     )
+
 
     if user_input:
 
@@ -1983,9 +2578,14 @@ def show_chat():
             user_input
         )
 
-        messages = get_chat_messages(session_id)
+
+        messages = get_chat_messages(
+            session_id
+        )
+
 
         history = ""
+
 
         for message in messages[-12:]:
 
@@ -1994,11 +2594,14 @@ def show_chat():
                 f"{message.get('content')}"
             )
 
+
         knowledge_list = get_knowledge(
             selected_gem_id
         )
 
+
         knowledge_text = ""
+
 
         for item in knowledge_list:
 
@@ -2008,6 +2611,7 @@ def show_chat():
 
 {item.get("content", "")}
 """
+
 
         prompt = f"""
 你現在是：
@@ -2033,9 +2637,15 @@ Knowledge：
 請使用繁體中文。
 """
 
-        with st.spinner("AI 回覆中..."):
 
-            response = ask_gemini(prompt)
+        with st.spinner(
+            "AI 回覆中..."
+        ):
+
+            response = ask_gemini(
+                prompt
+            )
+
 
         create_chat_message(
             session_id,
@@ -2047,32 +2657,46 @@ Knowledge：
 
 
 # =========================================================
-# 32. 聊天紀錄中心
+# 34. 聊天紀錄中心
 # =========================================================
 
 def show_chat_history():
 
-    st.title("🕘 完整聊天紀錄中心")
+    st.title(
+        "🕘 完整聊天紀錄中心"
+    )
 
     sessions = get_chat_sessions()
 
+
     if not sessions:
 
-        st.info("目前沒有聊天紀錄。")
+        st.info(
+            "目前沒有聊天紀錄。"
+        )
 
         return
+
 
     st.caption(
         f"共有 {len(sessions)} 個聊天紀錄"
     )
 
+
     for session in sessions:
 
-        session_id = session.get("id")
+        session_id = session.get(
+            "id"
+        )
 
-        gem_id = session.get("gem_id")
+        gem_id = session.get(
+            "gem_id"
+        )
 
-        gem = get_gem(gem_id)
+        gem = get_gem(
+            gem_id
+        )
+
 
         gem_name = (
             gem.get("name")
@@ -2080,7 +2704,10 @@ def show_chat_history():
             else "未知 GEM"
         )
 
-        with st.container(border=True):
+
+        with st.container(
+            border=True
+        ):
 
             st.subheader(
                 session.get(
@@ -2097,7 +2724,9 @@ def show_chat_history():
                 f"建立時間：{session.get('created_at', '')}"
             )
 
+
             col1, col2 = st.columns(2)
+
 
             with col1:
 
@@ -2111,15 +2740,20 @@ def show_chat_history():
 
                 ):
 
-                    st.session_state.selected_gem_id = gem_id
+                    st.session_state.selected_gem_id = (
+                        gem_id
+                    )
 
                     st.session_state.selected_chat_session_id = (
                         session_id
                     )
 
-                    st.session_state.page = "GEM 對話"
+                    st.session_state.page = (
+                        "GEM 對話"
+                    )
 
                     st.rerun()
+
 
             with col2:
 
@@ -2133,36 +2767,46 @@ def show_chat_history():
 
                 ):
 
-                    delete_chat_session(session_id)
+                    delete_chat_session(
+                        session_id
+                    )
 
-                    st.success("聊天紀錄已刪除。")
+                    st.success(
+                        "聊天紀錄已刪除。"
+                    )
 
                     st.rerun()
 
 
 # =========================================================
-# 33. Gemini 自動生成
+# 35. Gemini 自動生成
 # =========================================================
 
 def show_gemini_generator():
 
-    st.title("🤖 Gemini GEM 自動生成器")
+    st.title(
+        "🤖 Gemini GEM 自動生成器"
+    )
 
     show_model_status()
+
 
     gem_purpose = st.text_area(
         "你想建立什麼 GEM？",
         height=180
     )
 
+
     target_user = st.text_input(
         "主要使用者"
     )
+
 
     special_requirements = st.text_area(
         "特殊要求",
         height=150
     )
+
 
     if st.button(
         "✨ 生成 GEM",
@@ -2172,9 +2816,12 @@ def show_gemini_generator():
 
         if not gem_purpose.strip():
 
-            st.warning("請輸入 GEM 需求。")
+            st.warning(
+                "請輸入 GEM 需求。"
+            )
 
             return
+
 
         prompt = f"""
 你是一位專業 AI GEM Prompt 設計專家。
@@ -2206,11 +2853,15 @@ Greeting：
 直接輸出完整 GEM。
 """
 
-        with st.spinner("Gemini 正在生成..."):
+
+        with st.spinner(
+            "Gemini 正在生成..."
+        ):
 
             st.session_state.gemini_result = (
                 ask_gemini(prompt)
             )
+
 
     if st.session_state.gemini_result:
 
@@ -2224,23 +2875,29 @@ Greeting：
 
 
 # =========================================================
-# 34. GEM 匯入
+# 36. GEM 匯入
 # =========================================================
 
 def show_import():
 
-    st.title("📥 GEM 匯入")
+    st.title(
+        "📥 GEM 匯入"
+    )
+
 
     uploaded_file = st.file_uploader(
         "選擇 JSON 或 TXT",
         type=["json", "txt"]
     )
 
+
     if uploaded_file is None:
 
         return
 
+
     content = uploaded_file.read()
+
 
     name = "匯入 GEM"
 
@@ -2250,27 +2907,49 @@ def show_import():
 
     greeting = ""
 
-    if uploaded_file.name.lower().endswith(".json"):
+
+    if uploaded_file.name.lower().endswith(
+        ".json"
+    ):
 
         try:
 
             data = json.loads(
-                content.decode("utf-8")
+                content.decode(
+                    "utf-8"
+                )
             )
 
-            name = data.get("name", name)
 
-            role = data.get("role", "")
+            name = data.get(
+                "name",
+                name
+            )
 
-            workflow = data.get("workflow", "")
+            role = data.get(
+                "role",
+                ""
+            )
 
-            greeting = data.get("greeting", "")
+            workflow = data.get(
+                "workflow",
+                ""
+            )
+
+            greeting = data.get(
+                "greeting",
+                ""
+            )
+
 
         except Exception as e:
 
-            st.error(f"JSON 錯誤：{e}")
+            st.error(
+                f"JSON 錯誤：{e}"
+            )
 
             return
+
 
     else:
 
@@ -2279,11 +2958,13 @@ def show_import():
             errors="ignore"
         )
 
+
     st.text_input(
         "GEM 名稱",
         value=name,
         key="import_name"
     )
+
 
     if st.button(
         "☁️ 匯入 GEM",
@@ -2303,26 +2984,37 @@ def show_import():
 
         )
 
+
         if result:
 
-            st.success("匯入成功！")
+            st.success(
+                "匯入成功！"
+            )
+
 
             st.session_state.selected_gem_id = (
                 result[0]["id"]
             )
 
-            st.session_state.page = "GEM 詳細"
+
+            st.session_state.page = (
+                "GEM 詳細"
+            )
+
 
             st.rerun()
 
 
 # =========================================================
-# 35. GEM 模板
+# 37. GEM 模板
 # =========================================================
 
 def show_templates():
 
-    st.title("📚 GEM 模板")
+    st.title(
+        "📚 GEM 模板"
+    )
+
 
     templates = {
 
@@ -2350,6 +3042,7 @@ def show_templates():
 """
         },
 
+
         "SFBT 教練 GEM": {
 
             "role": """
@@ -2375,6 +3068,7 @@ def show_templates():
 """
         },
 
+
         "AI 陪聊 GEM": {
 
             "role": """
@@ -2398,17 +3092,24 @@ def show_templates():
 今天想聊些什麼？
 """
         }
+
     }
+
 
     for name, template in templates.items():
 
-        with st.container(border=True):
+        with st.container(
+            border=True
+        ):
 
-            st.subheader(name)
+            st.subheader(
+                name
+            )
 
             st.write(
                 template["role"]
             )
+
 
             if st.button(
 
@@ -2432,21 +3133,29 @@ def show_templates():
 
                 )
 
+
                 if result:
 
-                    st.success("建立成功！")
+                    st.success(
+                        "建立成功！"
+                    )
+
 
                     st.session_state.selected_gem_id = (
                         result[0]["id"]
                     )
 
-                    st.session_state.page = "GEM 詳細"
+
+                    st.session_state.page = (
+                        "GEM 詳細"
+                    )
+
 
                     st.rerun()
 
 
 # =========================================================
-# 36. 回到頁首
+# 38. 回到頁首
 # =========================================================
 
 def show_scroll_top():
@@ -2457,6 +3166,7 @@ def show_scroll_top():
         """,
         unsafe_allow_html=True
     )
+
 
     if st.button(
         "⬆️ 回到頁首",
@@ -2478,36 +3188,52 @@ def show_scroll_top():
 
 
 # =========================================================
-# 37. Sidebar
+# 39. Sidebar
 # =========================================================
 
 with st.sidebar:
 
-    st.title("☁️ GEM Builder Cloud")
-
-    st.caption(
-        "Day 23-E｜個人雲端版"
+    st.title(
+        "☁️ GEM Builder Cloud"
     )
 
+
+    st.caption(
+        "Day 24-A｜Cloud 2.0"
+    )
+
+
     st.divider()
+
 
     # =====================================================
     # Gemini 模型
     # =====================================================
 
-    st.subheader("🤖 Gemini 模型")
+    st.subheader(
+        "🤖 Gemini 模型"
+    )
 
-    models = st.session_state.available_models
+
+    models = (
+        st.session_state.available_models
+    )
+
 
     if models:
 
         current_index = 0
 
-        if st.session_state.selected_model in models:
+
+        if (
+            st.session_state.selected_model
+            in models
+        ):
 
             current_index = models.index(
                 st.session_state.selected_model
             )
+
 
         selected_model = st.selectbox(
 
@@ -2521,6 +3247,7 @@ with st.sidebar:
 
         )
 
+
         if (
             selected_model
             != st.session_state.selected_model
@@ -2532,16 +3259,22 @@ with st.sidebar:
 
             st.rerun()
 
+
         st.success(
-            f"目前模型：{st.session_state.selected_model}"
+            f"目前模型：\n"
+            f"{st.session_state.selected_model}"
         )
+
 
     else:
 
-        st.error("沒有找到可用模型。")
+        st.error(
+            "沒有找到可用模型。"
+        )
+
 
     # =====================================================
-    # 重新偵測模型
+    # 重新偵測
     # =====================================================
 
     if st.button(
@@ -2551,9 +3284,11 @@ with st.sidebar:
 
         get_available_models.clear()
 
+
         st.session_state.available_models = (
             get_available_models()
         )
+
 
         if (
             st.session_state.selected_model
@@ -2564,89 +3299,130 @@ with st.sidebar:
                 st.session_state.available_models[0]
             )
 
+
         st.rerun()
+
 
     st.divider()
 
-    st.subheader("🧭 功能")
+
+    # =====================================================
+    # 導覽
+    # =====================================================
+
+    st.subheader(
+        "🧭 功能"
+    )
+
 
     if st.button(
-        "🏠 回到首頁",
+        "🏠 Dashboard",
         use_container_width=True
     ):
 
-        st.session_state.page = "首頁"
+        st.session_state.page = (
+            "首頁"
+        )
 
         st.rerun()
+
 
     if st.button(
         "➕ 建立 GEM",
         use_container_width=True
     ):
 
-        st.session_state.page = "建立 GEM"
+        st.session_state.page = (
+            "建立 GEM"
+        )
 
         st.rerun()
+
 
     if st.button(
         "🧩 GEM 工作區",
         use_container_width=True
     ):
 
-        st.session_state.page = "GEM 工作區"
+        st.session_state.page = (
+            "GEM 工作區"
+        )
 
         st.rerun()
+
 
     if st.button(
         "💬 GEM 對話",
         use_container_width=True
     ):
 
-        st.session_state.page = "GEM 對話"
+        st.session_state.page = (
+            "GEM 對話"
+        )
 
         st.rerun()
+
 
     if st.button(
         "🕘 聊天紀錄中心",
         use_container_width=True
     ):
 
-        st.session_state.page = "聊天紀錄"
+        st.session_state.page = (
+            "聊天紀錄"
+        )
 
         st.rerun()
+
 
     if st.button(
         "🤖 AI 自動生成",
         use_container_width=True
     ):
 
-        st.session_state.page = "Gemini 自動生成"
+        st.session_state.page = (
+            "Gemini 自動生成"
+        )
 
         st.rerun()
+
 
     if st.button(
         "📥 GEM 匯入",
         use_container_width=True
     ):
 
-        st.session_state.page = "GEM 匯入"
+        st.session_state.page = (
+            "GEM 匯入"
+        )
 
         st.rerun()
+
 
     if st.button(
         "📚 GEM 模板",
         use_container_width=True
     ):
 
-        st.session_state.page = "GEM 模板"
+        st.session_state.page = (
+            "GEM 模板"
+        )
 
         st.rerun()
 
+
     st.divider()
+
 
     st.caption(
         "☁️ Supabase Cloud"
     )
+
+
+    st.caption(
+        f"🤖 {st.session_state.selected_model}"
+    )
+
 
     st.caption(
         datetime.now().strftime(
@@ -2656,7 +3432,7 @@ with st.sidebar:
 
 
 # =========================================================
-# 38. 頁面路由
+# 40. 頁面路由
 # =========================================================
 
 if st.session_state.page == "首頁":
@@ -2705,7 +3481,7 @@ elif st.session_state.page == "GEM 模板":
 
 
 # =========================================================
-# 39. 頁面底部
+# 41. 頁面底部
 # =========================================================
 
 st.divider()
@@ -2714,9 +3490,10 @@ show_scroll_top()
 
 st.caption(
     f"☁️ GEM Builder Cloud ｜ "
-    f"目前模型：{st.session_state.selected_model}"
+    f"目前模型："
+    f"{st.session_state.selected_model}"
 )
 
 st.caption(
-    "Day 23-E"
+    "Day 24-A｜Cloud 2.0"
 )
