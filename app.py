@@ -53,10 +53,7 @@ st.markdown(
         min-height: 44px;
     }
 
-    textarea {
-        border-radius: 10px !important;
-    }
-
+    textarea,
     input {
         border-radius: 10px !important;
     }
@@ -93,6 +90,7 @@ try:
     SUPABASE_URL = st.secrets["SUPABASE_URL"]
     SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
     GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
+
 except Exception as e:
     st.error("❌ 無法讀取 Secrets。")
     st.code(str(e))
@@ -102,26 +100,20 @@ except Exception as e:
 # =========================================================
 # 4. SUPABASE TABLES
 # =========================================================
-#
-# 目前 Supabase 實際資料表：
-#
-# cloud_test
-# gem_chat_messages
-# gem_chat_sessions
-# gem_knowledge
-# gems
-#
-# =========================================================
 
 GEM_TABLE = "gems"
+
 KNOWLEDGE_TABLE = "gem_knowledge"
+
 CHAT_SESSION_TABLE = "gem_chat_sessions"
+
 CHAT_MESSAGE_TABLE = "gem_chat_messages"
+
 CLOUD_TEST_TABLE = "cloud_test"
 
 
 # =========================================================
-# 5. CLIENTS
+# 5. SUPABASE CLIENT
 # =========================================================
 
 try:
@@ -129,67 +121,92 @@ try:
         SUPABASE_URL,
         SUPABASE_KEY
     )
+
 except Exception as e:
     st.error("❌ Supabase 連線失敗")
     st.code(str(e))
     st.stop()
 
 
+# =========================================================
+# 6. GEMINI CLIENT
+# =========================================================
+
 def get_gemini_client():
-    return genai.Client(api_key=GEMINI_API_KEY)
+
+    return genai.Client(
+        api_key=GEMINI_API_KEY
+    )
 
 
 # =========================================================
-# 6. SESSION STATE
+# 7. SESSION STATE
 # =========================================================
 
 defaults = {
     "page": "首頁",
+
     "selected_gem_id": None,
+
     "selected_chat_session_id": None,
+
     "gemini_result": "",
+
     "optimizer_result": "",
+
     "delete_confirm": False,
-    "knowledge_delete_confirm": False,
+
     "available_models": [],
+
     "selected_model": None,
+
+    "model_error": "",
 }
 
 for key, value in defaults.items():
+
     if key not in st.session_state:
+
         st.session_state[key] = value
 
 
 # =========================================================
-# 7. GEMINI MODEL DETECTION
+# 8. GEMINI MODEL DETECTION
 # =========================================================
 
 def detect_gemini_models():
-    """
-    動態取得目前 API Key 可以使用的 Gemini 模型。
-    不硬編碼模型名稱。
-    """
 
     try:
+
         client = get_gemini_client()
-        models = list(client.models.list())
+
+        models = list(
+            client.models.list()
+        )
 
         result = []
 
         for model in models:
-            name = getattr(model, "name", "")
+
+            name = getattr(
+                model,
+                "name",
+                ""
+            )
 
             if not name:
                 continue
 
-            clean_name = name.replace("models/", "")
+            clean_name = name.replace(
+                "models/",
+                ""
+            )
 
             lower_name = clean_name.lower()
 
             if "gemini" not in lower_name:
                 continue
 
-            # 排除不適合一般文字生成的模型
             excluded_words = [
                 "embedding",
                 "imagen",
@@ -197,10 +214,12 @@ def detect_gemini_models():
                 "live",
             ]
 
-            if any(word in lower_name for word in excluded_words):
+            if any(
+                word in lower_name
+                for word in excluded_words
+            ):
                 continue
 
-            # 檢查支援能力
             supported_actions = getattr(
                 model,
                 "supported_actions",
@@ -208,6 +227,7 @@ def detect_gemini_models():
             )
 
             if supported_actions:
+
                 actions = [
                     str(x).lower()
                     for x in supported_actions
@@ -220,9 +240,13 @@ def detect_gemini_models():
                     continue
 
             if clean_name not in result:
-                result.append(clean_name)
 
-        def model_sort_key(name):
+                result.append(
+                    clean_name
+                )
+
+        def sort_key(name):
+
             lower = name.lower()
 
             if "flash-lite" in lower:
@@ -236,12 +260,16 @@ def detect_gemini_models():
 
             return 3
 
-        result.sort(key=model_sort_key)
+        result.sort(
+            key=sort_key
+        )
 
         return result
 
     except Exception as e:
+
         st.session_state.model_error = str(e)
+
         return []
 
 
@@ -254,23 +282,32 @@ def initialize_models():
         st.session_state.available_models = models
 
         if models:
+
             if (
                 st.session_state.selected_model
                 not in models
             ):
-                st.session_state.selected_model = models[0]
+
+                st.session_state.selected_model = (
+                    models[0]
+                )
 
 
 # =========================================================
-# 8. GEMINI CALL
+# 9. GEMINI ASK
 # =========================================================
 
 def ask_gemini(prompt):
 
-    model = st.session_state.selected_model
+    model = (
+        st.session_state.selected_model
+    )
 
     if not model:
-        return "❌ 目前沒有可使用的 Gemini 模型。"
+
+        return (
+            "❌ 目前沒有可使用的 Gemini 模型。"
+        )
 
     try:
 
@@ -288,9 +325,12 @@ def ask_gemini(prompt):
         )
 
         if text:
+
             return text
 
-        return "⚠️ Gemini 沒有返回文字內容。"
+        return (
+            "⚠️ Gemini 沒有返回文字內容。"
+        )
 
     except Exception as e:
 
@@ -301,23 +341,23 @@ def ask_gemini(prompt):
 
 
 # =========================================================
-# 9. MODEL STATUS
+# 10. MODEL STATUS
 # =========================================================
 
 def show_model_status():
 
-    current_model = (
+    model = (
         st.session_state.selected_model
         or "尚未偵測到模型"
     )
 
     st.info(
-        f"🤖 目前使用 AI 模型：`{current_model}`"
+        f"🤖 目前使用 AI 模型：`{model}`"
     )
 
 
 # =========================================================
-# 10. GEM CRUD
+# 11. GEM CRUD
 # =========================================================
 
 def get_gems():
@@ -328,7 +368,10 @@ def get_gems():
             supabase
             .table(GEM_TABLE)
             .select("*")
-            .order("created_at", desc=True)
+            .order(
+                "created_at",
+                desc=True
+            )
             .execute()
         )
 
@@ -360,6 +403,7 @@ def get_gem(gem_id):
         )
 
         if response.data:
+
             return response.data[0]
 
         return None
@@ -398,6 +442,7 @@ def create_gem(
         )
 
         if response.data:
+
             return response.data[0]
 
         return None
@@ -436,7 +481,9 @@ def update_gem(
             .execute()
         )
 
-        return bool(response.data)
+        return bool(
+            response.data
+        )
 
     except Exception as e:
 
@@ -451,8 +498,8 @@ def delete_gem(gem_id):
 
     try:
 
-        # 取得聊天 Session
-        sessions = (
+        # 取得這個 GEM 的所有聊天 Session
+        sessions_response = (
             supabase
             .table(CHAT_SESSION_TABLE)
             .select("id")
@@ -460,24 +507,30 @@ def delete_gem(gem_id):
             .execute()
         )
 
+        sessions = (
+            sessions_response.data or []
+        )
+
         session_ids = [
-            item["id"]
-            for item in (sessions.data or [])
-            if item.get("id")
+            session.get("id")
+            for session in sessions
+            if session.get("id") is not None
         ]
 
-        # 刪除聊天訊息
-        for session_id in session_ids:
+        # 先刪除聊天訊息
+        # 注意：
+        # gem_chat_messages 使用 chat_id
+        for chat_id in session_ids:
 
             (
                 supabase
                 .table(CHAT_MESSAGE_TABLE)
                 .delete()
-                .eq("session_id", session_id)
+                .eq("chat_id", chat_id)
                 .execute()
             )
 
-        # 刪除聊天 Session
+        # 再刪除聊天 Session
         (
             supabase
             .table(CHAT_SESSION_TABLE)
@@ -516,7 +569,7 @@ def delete_gem(gem_id):
 
 
 # =========================================================
-# 11. KNOWLEDGE CRUD
+# 12. KNOWLEDGE CRUD
 # =========================================================
 
 def get_knowledge(gem_id):
@@ -528,7 +581,10 @@ def get_knowledge(gem_id):
             .table(KNOWLEDGE_TABLE)
             .select("*")
             .eq("gem_id", gem_id)
-            .order("created_at", desc=True)
+            .order(
+                "created_at",
+                desc=True
+            )
             .execute()
         )
 
@@ -564,7 +620,9 @@ def create_knowledge(
             .execute()
         )
 
-        return bool(response.data)
+        return bool(
+            response.data
+        )
 
     except Exception as e:
 
@@ -596,7 +654,9 @@ def update_knowledge(
             .execute()
         )
 
-        return bool(response.data)
+        return bool(
+            response.data
+        )
 
     except Exception as e:
 
@@ -607,7 +667,9 @@ def update_knowledge(
         return False
 
 
-def delete_knowledge(knowledge_id):
+def delete_knowledge(
+    knowledge_id
+):
 
     try:
 
@@ -631,7 +693,7 @@ def delete_knowledge(knowledge_id):
 
 
 # =========================================================
-# 12. CHAT SESSION CRUD
+# 13. CHAT SESSION CRUD
 # =========================================================
 
 def get_chat_sessions():
@@ -642,31 +704,10 @@ def get_chat_sessions():
             supabase
             .table(CHAT_SESSION_TABLE)
             .select("*")
-            .order("created_at", desc=True)
-            .execute()
-        )
-
-        return response.data or []
-
-    except Exception as e:
-
-        st.error(
-            f"❌ 取得聊天紀錄失敗：{e}"
-        )
-
-        return []
-
-
-def get_chat_sessions_by_gem(gem_id):
-
-    try:
-
-        response = (
-            supabase
-            .table(CHAT_SESSION_TABLE)
-            .select("*")
-            .eq("gem_id", gem_id)
-            .order("created_at", desc=True)
+            .order(
+                "created_at",
+                desc=True
+            )
             .execute()
         )
 
@@ -676,6 +717,35 @@ def get_chat_sessions_by_gem(gem_id):
 
         st.error(
             f"❌ 取得聊天 Session 失敗：{e}"
+        )
+
+        return []
+
+
+def get_chat_sessions_by_gem(
+    gem_id
+):
+
+    try:
+
+        response = (
+            supabase
+            .table(CHAT_SESSION_TABLE)
+            .select("*")
+            .eq("gem_id", gem_id)
+            .order(
+                "created_at",
+                desc=True
+            )
+            .execute()
+        )
+
+        return response.data or []
+
+    except Exception as e:
+
+        st.error(
+            f"❌ 取得 GEM 聊天 Session 失敗：{e}"
         )
 
         return []
@@ -701,6 +771,7 @@ def create_chat_session(
         )
 
         if response.data:
+
             return response.data[0]
 
         return None
@@ -714,15 +785,19 @@ def create_chat_session(
         return None
 
 
-def delete_chat_session(session_id):
+def delete_chat_session(
+    session_id
+):
 
     try:
 
+        # 注意：
+        # gem_chat_messages 的外鍵欄位是 chat_id
         (
             supabase
             .table(CHAT_MESSAGE_TABLE)
             .delete()
-            .eq("session_id", session_id)
+            .eq("chat_id", session_id)
             .execute()
         )
 
@@ -746,10 +821,12 @@ def delete_chat_session(session_id):
 
 
 # =========================================================
-# 13. CHAT MESSAGE CRUD
+# 14. CHAT MESSAGE CRUD
 # =========================================================
 
-def get_chat_messages(session_id):
+def get_chat_messages(
+    chat_id
+):
 
     try:
 
@@ -757,8 +834,11 @@ def get_chat_messages(session_id):
             supabase
             .table(CHAT_MESSAGE_TABLE)
             .select("*")
-            .eq("session_id", session_id)
-            .order("created_at", desc=False)
+            .eq("chat_id", chat_id)
+            .order(
+                "created_at",
+                desc=False
+            )
             .execute()
         )
 
@@ -774,7 +854,7 @@ def get_chat_messages(session_id):
 
 
 def create_chat_message(
-    session_id,
+    chat_id,
     role,
     content
 ):
@@ -782,7 +862,7 @@ def create_chat_message(
     try:
 
         data = {
-            "session_id": session_id,
+            "chat_id": chat_id,
             "role": role,
             "content": content,
         }
@@ -794,7 +874,9 @@ def create_chat_message(
             .execute()
         )
 
-        return bool(response.data)
+        return bool(
+            response.data
+        )
 
     except Exception as e:
 
@@ -806,7 +888,7 @@ def create_chat_message(
 
 
 # =========================================================
-# 14. EXPORT
+# 15. EXPORT
 # =========================================================
 
 def gem_to_txt(gem):
@@ -822,29 +904,37 @@ def gem_to_txt(gem):
     )
 
     lines.append("")
+
     lines.append("## Role")
+
     lines.append(
         gem.get("role", "")
     )
 
     lines.append("")
+
     lines.append("## Workflow")
+
     lines.append(
         gem.get("workflow", "")
     )
 
     lines.append("")
+
     lines.append("## Greeting")
+
     lines.append(
         gem.get("greeting", "")
     )
 
     lines.append("")
+
     lines.append("## Knowledge")
 
     for item in knowledge:
 
         lines.append("")
+
         lines.append(
             f"### {item.get('title', '')}"
         )
@@ -884,7 +974,7 @@ def gem_backup_json(gem):
 
 
 # =========================================================
-# 15. BUILD GEM PROMPT
+# 16. BUILD GEM PROMPT
 # =========================================================
 
 def build_gem_prompt(
@@ -954,12 +1044,14 @@ def build_gem_prompt(
 
 
 # =========================================================
-# 16. DASHBOARD
+# 17. DASHBOARD
 # =========================================================
 
 def show_home():
 
-    st.title("☁️ GEM Builder Cloud")
+    st.title(
+        "☁️ GEM Builder Cloud"
+    )
 
     st.write(
         "你的個人 AI GEM 工作平台"
@@ -972,6 +1064,7 @@ def show_home():
     show_model_status()
 
     gems = get_gems()
+
     sessions = get_chat_sessions()
 
     knowledge_total = 0
@@ -990,6 +1083,7 @@ def show_home():
         )
 
     except Exception:
+
         knowledge_total = 0
 
     st.divider()
@@ -997,18 +1091,21 @@ def show_home():
     col1, col2, col3 = st.columns(3)
 
     with col1:
+
         st.metric(
             "GEM",
             len(gems)
         )
 
     with col2:
+
         st.metric(
             "聊天 Session",
             len(sessions)
         )
 
     with col3:
+
         st.metric(
             "Knowledge",
             knowledge_total
@@ -1016,7 +1113,9 @@ def show_home():
 
     st.divider()
 
-    st.subheader("⚡ 快速開始")
+    st.subheader(
+        "⚡ 快速開始"
+    )
 
     col1, col2, col3 = st.columns(3)
 
@@ -1027,7 +1126,10 @@ def show_home():
             use_container_width=True
         ):
 
-            st.session_state.page = "建立 GEM"
+            st.session_state.page = (
+                "建立 GEM"
+            )
+
             st.rerun()
 
     with col2:
@@ -1037,7 +1139,10 @@ def show_home():
             use_container_width=True
         ):
 
-            st.session_state.page = "GEM 對話"
+            st.session_state.page = (
+                "GEM 對話"
+            )
+
             st.rerun()
 
     with col3:
@@ -1047,12 +1152,17 @@ def show_home():
             use_container_width=True
         ):
 
-            st.session_state.page = "Gemini 自動生成"
+            st.session_state.page = (
+                "Gemini 自動生成"
+            )
+
             st.rerun()
 
     st.divider()
 
-    st.subheader("🧩 最近的 GEM")
+    st.subheader(
+        "🧩 最近的 GEM"
+    )
 
     if not gems:
 
@@ -1064,14 +1174,19 @@ def show_home():
 
     for gem in gems[:5]:
 
-        with st.container(border=True):
+        with st.container(
+            border=True
+        ):
 
             st.subheader(
                 f"🧩 {gem.get('name', '未命名 GEM')}"
             )
 
             st.write(
-                gem.get("role", "尚未設定角色")
+                gem.get(
+                    "role",
+                    "尚未設定角色"
+                )
             )
 
             if st.button(
@@ -1084,18 +1199,22 @@ def show_home():
                     gem.get("id")
                 )
 
-                st.session_state.page = "GEM 詳細"
+                st.session_state.page = (
+                    "GEM 詳細"
+                )
 
                 st.rerun()
 
 
 # =========================================================
-# 17. CREATE GEM
+# 18. CREATE GEM
 # =========================================================
 
 def show_create_gem():
 
-    st.title("＋ 建立 GEM")
+    st.title(
+        "＋ 建立 GEM"
+    )
 
     name = st.text_input(
         "GEM 名稱",
@@ -1150,18 +1269,22 @@ def show_create_gem():
                 gem.get("id")
             )
 
-            st.session_state.page = "GEM 詳細"
+            st.session_state.page = (
+                "GEM 詳細"
+            )
 
             st.rerun()
 
 
 # =========================================================
-# 18. WORKSPACE
+# 19. WORKSPACE
 # =========================================================
 
 def show_workspace():
 
-    st.title("🧩 GEM 工作區")
+    st.title(
+        "🧩 GEM 工作區"
+    )
 
     gems = get_gems()
 
@@ -1176,7 +1299,10 @@ def show_workspace():
             use_container_width=True
         ):
 
-            st.session_state.page = "建立 GEM"
+            st.session_state.page = (
+                "建立 GEM"
+            )
+
             st.rerun()
 
         return
@@ -1202,14 +1328,19 @@ def show_workspace():
 
     for gem in filtered:
 
-        with st.container(border=True):
+        with st.container(
+            border=True
+        ):
 
             st.subheader(
                 f"🧩 {gem.get('name', '')}"
             )
 
             st.caption(
-                gem.get("role", "")
+                gem.get(
+                    "role",
+                    ""
+                )
             )
 
             if st.button(
@@ -1222,18 +1353,22 @@ def show_workspace():
                     gem.get("id")
                 )
 
-                st.session_state.page = "GEM 詳細"
+                st.session_state.page = (
+                    "GEM 詳細"
+                )
 
                 st.rerun()
 
 
 # =========================================================
-# 19. GEM DETAIL
+# 20. GEM DETAIL
 # =========================================================
 
 def show_gem_detail():
 
-    gem_id = st.session_state.selected_gem_id
+    gem_id = (
+        st.session_state.selected_gem_id
+    )
 
     if not gem_id:
 
@@ -1243,7 +1378,9 @@ def show_gem_detail():
 
         return
 
-    gem = get_gem(gem_id)
+    gem = get_gem(
+        gem_id
+    )
 
     if not gem:
 
@@ -1271,35 +1408,52 @@ def show_gem_detail():
     )
 
     # =====================================================
-    # CONTENT
+    # TAB 1
     # =====================================================
 
     with tabs[0]:
 
-        st.subheader("Role")
+        st.subheader(
+            "Role"
+        )
 
         st.write(
-            gem.get("role", "")
+            gem.get(
+                "role",
+                ""
+            )
             or "尚未設定"
         )
 
-        st.subheader("Workflow")
+        st.subheader(
+            "Workflow"
+        )
 
         st.write(
-            gem.get("workflow", "")
+            gem.get(
+                "workflow",
+                ""
+            )
             or "尚未設定"
         )
 
-        st.subheader("Greeting")
+        st.subheader(
+            "Greeting"
+        )
 
         st.write(
-            gem.get("greeting", "")
+            gem.get(
+                "greeting",
+                ""
+            )
             or "尚未設定"
         )
 
         st.divider()
 
-        st.subheader("📦 匯出")
+        st.subheader(
+            "📦 匯出"
+        )
 
         col1, col2 = st.columns(2)
 
@@ -1339,7 +1493,9 @@ def show_gem_detail():
 
         st.divider()
 
-        st.subheader("⚠️ 刪除 GEM")
+        st.subheader(
+            "⚠️ 刪除 GEM"
+        )
 
         if not st.session_state.delete_confirm:
 
@@ -1349,6 +1505,7 @@ def show_gem_detail():
             ):
 
                 st.session_state.delete_confirm = True
+
                 st.rerun()
 
         else:
@@ -1367,12 +1524,19 @@ def show_gem_detail():
                     use_container_width=True
                 ):
 
-                    if delete_gem(gem_id):
+                    if delete_gem(
+                        gem_id
+                    ):
 
                         st.session_state.selected_gem_id = None
+
                         st.session_state.selected_chat_session_id = None
+
                         st.session_state.delete_confirm = False
-                        st.session_state.page = "GEM 工作區"
+
+                        st.session_state.page = (
+                            "GEM 工作區"
+                        )
 
                         st.success(
                             "GEM 已刪除。"
@@ -1388,34 +1552,47 @@ def show_gem_detail():
                 ):
 
                     st.session_state.delete_confirm = False
+
                     st.rerun()
 
     # =====================================================
-    # EDIT
+    # TAB 2
     # =====================================================
 
     with tabs[1]:
 
         name = st.text_input(
             "GEM 名稱",
-            value=gem.get("name", "")
+            value=gem.get(
+                "name",
+                ""
+            )
         )
 
         role = st.text_area(
             "Role",
-            value=gem.get("role", ""),
+            value=gem.get(
+                "role",
+                ""
+            ),
             height=180
         )
 
         workflow = st.text_area(
             "Workflow",
-            value=gem.get("workflow", ""),
+            value=gem.get(
+                "workflow",
+                ""
+            ),
             height=220
         )
 
         greeting = st.text_area(
             "Greeting",
-            value=gem.get("greeting", ""),
+            value=gem.get(
+                "greeting",
+                ""
+            ),
             height=120
         )
 
@@ -1439,18 +1616,21 @@ def show_gem_detail():
                 st.rerun()
 
     # =====================================================
-    # KNOWLEDGE
+    # TAB 3
     # =====================================================
 
     with tabs[2]:
 
-        st.subheader("📚 Knowledge Base")
+        st.subheader(
+            "📚 Knowledge Base"
+        )
 
-        knowledge = get_knowledge(gem_id)
+        knowledge = get_knowledge(
+            gem_id
+        )
 
         with st.expander(
-            "＋ 新增 Knowledge",
-            expanded=False
+            "＋ 新增 Knowledge"
         ):
 
             new_title = st.text_input(
@@ -1505,21 +1685,32 @@ def show_gem_detail():
 
         for item in knowledge:
 
-            with st.container(border=True):
+            with st.container(
+                border=True
+            ):
 
                 st.subheader(
-                    item.get("title", "未命名")
+                    item.get(
+                        "title",
+                        "未命名"
+                    )
                 )
 
                 edited_title = st.text_input(
                     "標題",
-                    value=item.get("title", ""),
+                    value=item.get(
+                        "title",
+                        ""
+                    ),
                     key=f"kt_{item.get('id')}"
                 )
 
                 edited_content = st.text_area(
                     "內容",
-                    value=item.get("content", ""),
+                    value=item.get(
+                        "content",
+                        ""
+                    ),
                     height=160,
                     key=f"kc_{item.get('id')}"
                 )
@@ -1565,7 +1756,7 @@ def show_gem_detail():
                             st.rerun()
 
     # =====================================================
-    # AI OPTIMIZER
+    # TAB 4
     # =====================================================
 
     with tabs[3]:
@@ -1584,7 +1775,9 @@ def show_gem_detail():
             use_container_width=True
         ):
 
-            knowledge = get_knowledge(gem_id)
+            knowledge = get_knowledge(
+                gem_id
+            )
 
             knowledge_text = ""
 
@@ -1657,12 +1850,14 @@ def show_gem_detail():
             )
 
     # =====================================================
-    # TEST
+    # TAB 5
     # =====================================================
 
     with tabs[4]:
 
-        st.subheader("🧪 GEM 測試")
+        st.subheader(
+            "🧪 GEM 測試"
+        )
 
         test_message = st.text_area(
             "輸入測試訊息",
@@ -1713,7 +1908,7 @@ def show_gem_detail():
             )
 
     # =====================================================
-    # CHAT
+    # TAB 6
     # =====================================================
 
     with tabs[5]:
@@ -1724,12 +1919,16 @@ def show_gem_detail():
 
 
 # =========================================================
-# 20. CHAT INSIDE GEM DETAIL
+# 21. GEM DETAIL CHAT
 # =========================================================
 
-def show_gem_chat_inside_detail(gem):
+def show_gem_chat_inside_detail(
+    gem
+):
 
-    gem_id = gem.get("id")
+    gem_id = gem.get(
+        "id"
+    )
 
     st.subheader(
         "💬 GEM 對話"
@@ -1739,31 +1938,65 @@ def show_gem_chat_inside_detail(gem):
         gem_id
     )
 
-    col1, col2 = st.columns([2, 1])
+    col1, col2 = st.columns(
+        [2, 1]
+    )
 
     with col1:
 
         if sessions:
 
-            session_options = {
-                f"{s.get('title', '未命名')} "
-                f"｜ {s.get('id')}":
-                s.get("id")
-                for s in sessions
-            }
+            session_options = {}
+
+            for session in sessions:
+
+                session_id = session.get(
+                    "id"
+                )
+
+                title = session.get(
+                    "title",
+                    "未命名"
+                )
+
+                label = (
+                    f"{title} "
+                    f"｜ {session_id}"
+                )
+
+                session_options[label] = (
+                    session_id
+                )
 
             labels = list(
                 session_options.keys()
             )
 
+            current_session = (
+                st.session_state.selected_chat_session_id
+            )
+
+            default_index = 0
+
+            for index, label in enumerate(labels):
+
+                if session_options[label] == current_session:
+
+                    default_index = index
+
+                    break
+
             selected_label = st.selectbox(
                 "選擇對話",
                 labels,
+                index=default_index,
                 key="detail_chat_session_select"
             )
 
             selected_session_id = (
-                session_options[selected_label]
+                session_options[
+                    selected_label
+                ]
             )
 
             st.session_state.selected_chat_session_id = (
@@ -1790,30 +2023,38 @@ def show_gem_chat_inside_detail(gem):
 
             if session:
 
-                st.session_state.selected_chat_session_id = (
-                    session.get("id")
+                session_id = session.get(
+                    "id"
                 )
 
-                if gem.get("greeting"):
+                st.session_state.selected_chat_session_id = (
+                    session_id
+                )
+
+                if gem.get(
+                    "greeting"
+                ):
 
                     create_chat_message(
-                        session.get("id"),
+                        session_id,
                         "assistant",
                         gem.get("greeting")
                     )
 
                 st.rerun()
 
-    session_id = (
+    chat_id = (
         st.session_state.selected_chat_session_id
     )
 
-    if not session_id:
+    if not chat_id:
 
         return
 
+    st.divider()
+
     messages = get_chat_messages(
-        session_id
+        chat_id
     )
 
     for message in messages:
@@ -1828,14 +2069,10 @@ def show_gem_chat_inside_detail(gem):
             ""
         )
 
-        display_role = (
+        with st.chat_message(
             "user"
             if role == "user"
             else "assistant"
-        )
-
-        with st.chat_message(
-            display_role
         ):
 
             st.markdown(
@@ -1848,18 +2085,21 @@ def show_gem_chat_inside_detail(gem):
 
     if user_message:
 
-        create_chat_message(
-            session_id,
+        saved = create_chat_message(
+            chat_id,
             "user",
             user_message
         )
+
+        if not saved:
+            return
 
         knowledge = get_knowledge(
             gem_id
         )
 
         history = get_chat_messages(
-            session_id
+            chat_id
         )
 
         prompt = build_gem_prompt(
@@ -1874,7 +2114,7 @@ def show_gem_chat_inside_detail(gem):
         )
 
         create_chat_message(
-            session_id,
+            chat_id,
             "assistant",
             response
         )
@@ -1883,12 +2123,14 @@ def show_gem_chat_inside_detail(gem):
 
 
 # =========================================================
-# 21. INDEPENDENT CHAT CENTER
+# 22. CHAT CENTER
 # =========================================================
 
 def show_chat():
 
-    st.title("💬 GEM 對話中心")
+    st.title(
+        "💬 GEM 對話中心"
+    )
 
     gems = get_gems()
 
@@ -1900,49 +2142,96 @@ def show_chat():
 
         return
 
-    gem_map = {
-        gem.get("name", "未命名"): gem.get("id")
-        for gem in gems
-    }
+    gem_map = {}
+
+    for gem in gems:
+
+        gem_map[
+            gem.get(
+                "name",
+                "未命名"
+            )
+        ] = gem.get(
+            "id"
+        )
 
     selected_name = st.selectbox(
         "選擇 GEM",
         list(gem_map.keys())
     )
 
-    gem_id = gem_map[selected_name]
+    gem_id = gem_map[
+        selected_name
+    ]
 
-    st.session_state.selected_gem_id = gem_id
+    st.session_state.selected_gem_id = (
+        gem_id
+    )
 
-    gem = get_gem(gem_id)
+    gem = get_gem(
+        gem_id
+    )
 
     if not gem:
+
         return
 
     sessions = get_chat_sessions_by_gem(
         gem_id
     )
 
-    col1, col2 = st.columns([2, 1])
+    col1, col2 = st.columns(
+        [2, 1]
+    )
 
     with col1:
 
         if sessions:
 
-            options = {
-                f"{s.get('title', '新的對話')} "
-                f"｜ {s.get('id')}":
-                s.get("id")
-                for s in sessions
-            }
+            options = {}
 
-            label = st.selectbox(
+            for session in sessions:
+
+                session_id = session.get(
+                    "id"
+                )
+
+                title = session.get(
+                    "title",
+                    "新的對話"
+                )
+
+                options[
+                    f"{title} ｜ {session_id}"
+                ] = session_id
+
+            labels = list(
+                options.keys()
+            )
+
+            current = (
+                st.session_state.selected_chat_session_id
+            )
+
+            default_index = 0
+
+            for index, label in enumerate(labels):
+
+                if options[label] == current:
+
+                    default_index = index
+
+                    break
+
+            selected_label = st.selectbox(
                 "選擇對話 Session",
-                list(options.keys())
+                labels,
+                index=default_index,
+                key="chat_center_session"
             )
 
             st.session_state.selected_chat_session_id = (
-                options[label]
+                options[selected_label]
             )
 
         else:
@@ -1965,35 +2254,40 @@ def show_chat():
 
             if session:
 
-                session_id = session.get(
+                chat_id = session.get(
                     "id"
                 )
 
                 st.session_state.selected_chat_session_id = (
-                    session_id
+                    chat_id
                 )
 
-                if gem.get("greeting"):
+                if gem.get(
+                    "greeting"
+                ):
 
                     create_chat_message(
-                        session_id,
+                        chat_id,
                         "assistant",
-                        gem.get("greeting")
+                        gem.get(
+                            "greeting"
+                        )
                     )
 
                 st.rerun()
 
-    session_id = (
+    chat_id = (
         st.session_state.selected_chat_session_id
     )
 
-    if not session_id:
+    if not chat_id:
+
         return
 
     st.divider()
 
     messages = get_chat_messages(
-        session_id
+        chat_id
     )
 
     for message in messages:
@@ -2024,18 +2318,20 @@ def show_chat():
 
     if user_message:
 
-        create_chat_message(
-            session_id,
+        if not create_chat_message(
+            chat_id,
             "user",
             user_message
-        )
+        ):
+
+            return
 
         knowledge = get_knowledge(
             gem_id
         )
 
         history = get_chat_messages(
-            session_id
+            chat_id
         )
 
         prompt = build_gem_prompt(
@@ -2050,7 +2346,7 @@ def show_chat():
         )
 
         create_chat_message(
-            session_id,
+            chat_id,
             "assistant",
             response
         )
@@ -2059,12 +2355,14 @@ def show_chat():
 
 
 # =========================================================
-# 22. CHAT HISTORY CENTER
+# 23. CHAT HISTORY
 # =========================================================
 
 def show_chat_history():
 
-    st.title("🕘 聊天紀錄中心")
+    st.title(
+        "🕘 聊天紀錄中心"
+    )
 
     sessions = get_chat_sessions()
 
@@ -2098,7 +2396,9 @@ def show_chat_history():
             "未知 GEM"
         )
 
-        with st.container(border=True):
+        with st.container(
+            border=True
+        ):
 
             st.subheader(
                 session.get(
@@ -2112,7 +2412,7 @@ def show_chat_history():
             )
 
             st.caption(
-                f"Session ID：{session_id}"
+                f"Chat ID：{session_id}"
             )
 
             col1, col2 = st.columns(2)
@@ -2133,7 +2433,9 @@ def show_chat_history():
                         session_id
                     )
 
-                    st.session_state.page = "GEM 對話"
+                    st.session_state.page = (
+                        "GEM 對話"
+                    )
 
                     st.rerun()
 
@@ -2164,22 +2466,24 @@ def show_chat_history():
 
 
 # =========================================================
-# 23. GEMINI AUTO GENERATOR
+# 24. GEMINI AUTO GENERATOR
 # =========================================================
 
 def show_gemini_generator():
 
-    st.title("✨ Gemini AI 自動生成 GEM")
+    st.title(
+        "✨ Gemini AI 自動生成 GEM"
+    )
 
     st.write(
-        "只要告訴 Gemini 你想建立什麼 AI GEM，"
-        "系統就會自動產生 Role、Workflow、Greeting。"
+        "告訴 Gemini 你想建立什麼 AI GEM，"
+        "系統會自動產生 Role、Workflow、Greeting。"
     )
 
     purpose = st.text_area(
         "你想做什麼 GEM？",
         height=150,
-        placeholder="例如：建立一個幫助 20 幾歲年輕人探索職涯的 AI 教練。"
+        placeholder="例如：建立一個幫助年輕人探索職涯的 AI 教練。"
     )
 
     target_user = st.text_input(
@@ -2244,7 +2548,9 @@ def show_gemini_generator():
             prompt
         )
 
-        st.session_state.gemini_result = result
+        st.session_state.gemini_result = (
+            result
+        )
 
     if st.session_state.gemini_result:
 
@@ -2268,19 +2574,25 @@ def show_gemini_generator():
 
 
 # =========================================================
-# 24. IMPORT GEM
+# 25. IMPORT
 # =========================================================
 
 def show_import():
 
-    st.title("📥 GEM 匯入")
+    st.title(
+        "📥 GEM 匯入"
+    )
 
     uploaded = st.file_uploader(
         "上傳 GEM JSON 或 TXT",
-        type=["json", "txt"]
+        type=[
+            "json",
+            "txt"
+        ]
     )
 
     if not uploaded:
+
         return
 
     try:
@@ -2317,13 +2629,26 @@ def show_import():
             else:
 
                 gem_data = data
+
                 knowledge_data = []
 
             gem = create_gem(
-                gem_data.get("name", "匯入 GEM"),
-                gem_data.get("role", ""),
-                gem_data.get("workflow", ""),
-                gem_data.get("greeting", "")
+                gem_data.get(
+                    "name",
+                    "匯入 GEM"
+                ),
+                gem_data.get(
+                    "role",
+                    ""
+                ),
+                gem_data.get(
+                    "workflow",
+                    ""
+                ),
+                gem_data.get(
+                    "greeting",
+                    ""
+                )
             )
 
             if gem:
@@ -2355,7 +2680,10 @@ def show_import():
                     use_container_width=True
                 ):
 
-                    st.session_state.page = "GEM 詳細"
+                    st.session_state.page = (
+                        "GEM 詳細"
+                    )
+
                     st.rerun()
 
         else:
@@ -2385,7 +2713,10 @@ def show_import():
                     use_container_width=True
                 ):
 
-                    st.session_state.page = "GEM 詳細"
+                    st.session_state.page = (
+                        "GEM 詳細"
+                    )
+
                     st.rerun()
 
     except Exception as e:
@@ -2396,16 +2727,19 @@ def show_import():
 
 
 # =========================================================
-# 25. TEMPLATES
+# 26. TEMPLATES
 # =========================================================
 
 def show_templates():
 
-    st.title("🧰 GEM 模板")
+    st.title(
+        "🧰 GEM 模板"
+    )
 
     templates = {
 
         "職涯教練 GEM": {
+
             "role": """
 你是一位溫暖、專業的 AI 職涯教練。
 
@@ -2419,6 +2753,7 @@ def show_templates():
 
 你不替使用者做決定，而是透過提問協助使用者自己看見答案。
 """,
+
             "workflow": """
 1. 先理解使用者目前的困擾。
 2. 透過開放式問題探索。
@@ -2427,6 +2762,7 @@ def show_templates():
 5. 協助比較選項。
 6. 最後形成下一步行動。
 """,
+
             "greeting": """
 你好，我是你的 AI 職涯探索教練。
 
@@ -2437,6 +2773,7 @@ def show_templates():
         },
 
         "SFBT 教練 GEM": {
+
             "role": """
 你是一位採用焦點解決短期治療精神的 AI 教練。
 
@@ -2449,6 +2786,7 @@ def show_templates():
 
 避免過度分析問題，而是協助使用者找到可行的下一步。
 """,
+
             "workflow": """
 1. 理解目前狀況。
 2. 探索期待的未來。
@@ -2457,6 +2795,7 @@ def show_templates():
 5. 使用量尺問題。
 6. 找到最小可行行動。
 """,
+
             "greeting": """
 你好，我會陪你從「問題」慢慢轉向「可能」。
 
@@ -2467,6 +2806,7 @@ def show_templates():
         },
 
         "AI 陪聊 GEM": {
+
             "role": """
 你是一位溫暖、自然、有同理心的 AI 陪聊夥伴。
 
@@ -2479,6 +2819,7 @@ def show_templates():
 
 不要說教，不要過度分析。
 """,
+
             "workflow": """
 1. 先理解使用者情緒。
 2. 回應使用者真正想表達的內容。
@@ -2486,6 +2827,7 @@ def show_templates():
 4. 必要時提出簡單問題。
 5. 不要一次給太多建議。
 """,
+
             "greeting": """
 嗨，很高興見到你。
 
@@ -2498,7 +2840,9 @@ def show_templates():
 
     for name, template in templates.items():
 
-        with st.container(border=True):
+        with st.container(
+            border=True
+        ):
 
             st.subheader(
                 f"🧩 {name}"
@@ -2531,32 +2875,38 @@ def show_templates():
                         gem.get("id")
                     )
 
-                    st.session_state.page = "GEM 詳細"
+                    st.session_state.page = (
+                        "GEM 詳細"
+                    )
 
                     st.rerun()
 
 
 # =========================================================
-# 26. SIDEBAR
+# 27. SIDEBAR
 # =========================================================
 
 def show_sidebar():
 
     with st.sidebar:
 
-        st.title("☁️ GEM Builder")
+        st.title(
+            "☁️ GEM Builder"
+        )
 
         st.caption(
-            "GEM Builder Cloud · Day 24-A-1"
+            "GEM Builder Cloud · Day 24-A-2"
         )
 
         st.divider()
 
         # -------------------------------------------------
-        # Gemini model
+        # Gemini
         # -------------------------------------------------
 
-        st.subheader("🤖 Gemini 模型")
+        st.subheader(
+            "🤖 Gemini 模型"
+        )
 
         initialize_models()
 
@@ -2584,7 +2934,9 @@ def show_sidebar():
                 key="sidebar_model_select"
             )
 
-            st.session_state.selected_model = selected
+            st.session_state.selected_model = (
+                selected
+            )
 
             if st.button(
                 "🔄 重新偵測模型",
@@ -2592,6 +2944,7 @@ def show_sidebar():
             ):
 
                 st.session_state.available_models = []
+
                 st.session_state.selected_model = None
 
                 st.rerun()
@@ -2602,12 +2955,25 @@ def show_sidebar():
                 "目前沒有偵測到 Gemini 模型。"
             )
 
+            if st.session_state.model_error:
+
+                with st.expander(
+                    "查看模型錯誤"
+                ):
+
+                    st.code(
+                        st.session_state.model_error
+                    )
+
             if st.button(
                 "🔄 重新偵測",
                 use_container_width=True
             ):
 
                 st.session_state.available_models = []
+
+                st.session_state.selected_model = None
+
                 st.rerun()
 
         st.divider()
@@ -2616,7 +2982,9 @@ def show_sidebar():
         # Navigation
         # -------------------------------------------------
 
-        st.subheader("📁 功能")
+        st.subheader(
+            "📁 功能"
+        )
 
         pages = [
             "首頁",
@@ -2638,15 +3006,18 @@ def show_sidebar():
             ):
 
                 st.session_state.page = page
+
                 st.rerun()
 
         st.divider()
 
         # -------------------------------------------------
-        # System status
+        # Cloud
         # -------------------------------------------------
 
-        st.subheader("☁️ Cloud 狀態")
+        st.subheader(
+            "☁️ Cloud 狀態"
+        )
 
         st.success(
             "Supabase 已連線"
@@ -2691,7 +3062,7 @@ def show_sidebar():
 
 
 # =========================================================
-# 27. ROUTER
+# 28. ROUTER
 # =========================================================
 
 show_sidebar()
@@ -2740,13 +3111,13 @@ else:
 
 
 # =========================================================
-# 28. FOOTER
+# 29. FOOTER
 # =========================================================
 
 st.divider()
 
 st.caption(
-    "☁️ GEM Builder Cloud · Day 24-A-1"
+    "☁️ GEM Builder Cloud · Day 24-A-2"
 )
 
 st.caption(
